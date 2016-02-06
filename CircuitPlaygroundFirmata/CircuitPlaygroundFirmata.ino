@@ -29,10 +29,13 @@
   See file LICENSE.txt for further informations on licensing terms.
 */
 
+#include <SPI.h>
 #include <Servo.h>
 #include <Wire.h>
 #include <Firmata.h>
 #include <Adafruit_NeoPixel.h>
+#include <Adafruit_LIS3DH.h>
+#include <Adafruit_Sensor.h>
 
 #define I2C_WRITE                   B00000000
 #define I2C_READ                    B00001000
@@ -48,6 +51,8 @@
 #define PIXEL_PIN      17
 #define PIXEL_TYPE     NEO_GRB + NEO_KHZ800
 #define SPEAKER_PIN    5
+#define LIS3DH_ADDR    0x18
+#define LIS3DH_CS      8
 
 // Circuit playground-specific Firmata SysEx commands:
 #define CP_COMMAND     0x40  // Byte that identifies all Circuit Playground commands.
@@ -61,6 +66,18 @@
                              //  - Frequency (hz) as 2 7-bit bytes (up to 2^14 hz, or about 16khz)
                              //  - Duration (ms) as 2 7-bit bytes.
 #define CP_NO_TONE     0x21  // Stop playing anything on the speaker.
+#define CP_ACCEL_READ    0x30  // Return the current x, y, z accelerometer values.
+#define CP_ACCEL_TAP     0x31  // Return the current accelerometer tap state.
+#define CP_ACCEL_ON      0x32  // Turn on continuous accelerometer readings.
+#define CP_ACCEL_OFF     0x33  // Turn off continuous accelerometer readings.
+#define CP_ACCEL_TAP_ON  0x34  // Turn on notifications of accelerometer taps/double taps.
+#define CP_ACCEL_TAP_OFF 0x35  // Turn off notifications of accelerometer taps/double taps.
+#define CP_ACCEL_READ_REPLY 0x36
+#define CP_ACCEL_TAP_REPLY  0x37
+#define CP_ACCEL_TAP_STREAM_ON   0x38  // Turn on continuous streaming of tap data.
+#define CP_ACCEL_TAP_STREAM_OFF  0x39  // Turn off streaming of tap data.
+#define CP_ACCEL_STREAM_ON   0x3A   // Turn on continuous streaming of accelerometer data.
+#define CP_ACCEL_STREAM_OFF  0x3B   // Turn off streaming of accelerometer data.
 
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL   1
@@ -72,6 +89,10 @@
 
 // Circuit playground globals:
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE);
+Adafruit_LIS3DH accel = Adafruit_LIS3DH(LIS3DH_CS);
+bool streamTap = false;
+bool streamAccel = false;
+
 
 /* analog inputs */
 int analogInputsToReport = 0; // bitwise array to store pin reporting
@@ -496,7 +517,26 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
       }
       break;
     case CP_NO_TONE:
+      // Stop tone playback.
       noTone(SPEAKER_PIN);
+      break;
+    case CP_ACCEL_READ:
+      sendAccelResponse();
+      break;
+    case CP_ACCEL_TAP:
+      sendTapResponse();
+      break;
+    case CP_ACCEL_TAP_STREAM_ON:
+      streamTap = true;
+      break;
+    case CP_ACCEL_TAP_STREAM_OFF:
+      streamTap = false;
+      break;
+    case CP_ACCEL_STREAM_ON:
+      streamAccel = true;
+      break;
+    case CP_ACCEL_STREAM_OFF:
+      streamAccel = false;
       break;
   }
 }
@@ -786,10 +826,31 @@ void systemResetCallback()
 
 void setup()
 {
+  // Circuit playground debug setup
+  Serial1.begin(57600);
+  Serial1.println("Circuit Playground Firmata starting up!");
+  
   // Circuit playground setup:
   pixels.begin();
   pixels.show();
-
+  if (!accel.begin()) {
+    pinMode(13, OUTPUT);
+    while (1) {
+      digitalWrite(13, LOW);
+      delay(100);
+      digitalWrite(13, HIGH);
+      delay(100);
+    }
+  }
+  // TODO: Expose function to set LIS3DH range, click threshold, etc.
+  accel.setRange(LIS3DH_RANGE_2_G);
+  delay(100);
+  accel.setClick(2, 80);
+  delay(100);
+  Serial1.print("Range = "); Serial1.print(2 << accel.getRange());  
+  Serial1.println("G");
+  Serial1.print("Click = "); Serial1.println(accel.getClick(), HEX);
+  
   Firmata.setFirmwareVersion(FIRMATA_MAJOR_VERSION, FIRMATA_MINOR_VERSION);
 
   Firmata.attach(ANALOG_MESSAGE, analogWriteCallback);
@@ -806,12 +867,53 @@ void setup()
   // Serial1.begin(57600);
   // Firmata.begin(Serial1);
   // then comment out or remove lines 701 - 704 below
-
   Firmata.begin(57600);
-  while (!Serial) {
-    ; // wait for serial port to connect. Only needed for ATmega32u4-based boards (Leonardo, etc).
-  }
+
+  // Tell Firmata to ignore pins that are used by the Circuit Playground hardware.
+  // This MUST be called or else Firmata will 'clobber' pins like the SPI CS!
+  pinConfig[1]  = PIN_MODE_IGNORE;   // Pin 1 = LIS3DH interrupt
+  pinConfig[11] = PIN_MODE_IGNORE;   // Pin 11 = SPI
+  pinConfig[10] = PIN_MODE_IGNORE;   // Pin 10 = SPI
+  pinConfig[9]  = PIN_MODE_IGNORE;   // Pin 9  = SPI
+  //pinConfig[22] = PIN_MODE_IGNORE;  // Pin 22 = cap touch common input
+  pinConfig[28] = PIN_MODE_IGNORE;   // Pin 28 = D8 = LIS3DH CS
+  pinConfig[26] = PIN_MODE_IGNORE;   // Messes with CS too?
+  
+  //while (!Serial) {
+  //  ; // wait for serial port to connect. Only needed for ATmega32u4-based boards (Leonardo, etc).
+  //}
   systemResetCallback();  // reset to default config
+}
+
+// Read the accelerometer and send a response packet.
+void sendAccelResponse() {
+  // Get an accelerometer x, y, z reading.
+  accel.read();
+  // Construct a response data packet.
+  uint8_t data[7] = {0};
+  data[0] = CP_ACCEL_READ_REPLY;
+  // Put the 3 16-bit readings into the packet.
+  // Note that Firmata.sendSysex will automatically convert bytes into
+  // two 7-bit bytes that are Firmata/MIDI compatible.
+  data[1] = accel.x & 0xFF;
+  data[2] = (accel.x >> 8) & 0xFF;
+  data[3] = accel.y & 0xFF;
+  data[4] = (accel.y >> 8) & 0xFF;
+  data[5] = accel.z & 0xFF;
+  data[6] = (accel.z >> 8) & 0xFF;
+  // Send the response.
+  Firmata.sendSysex(CP_COMMAND, 7, data);
+}
+
+void sendTapResponse() {
+  // Get the accelerometer tap detection state.
+  uint8_t click = accel.getClick();
+  // Construct a response data packet and send it.
+  uint8_t data[2] = {0};
+  data[0] = CP_ACCEL_TAP_REPLY;
+  data[1] = click;
+  // Send the response.
+  Firmata.sendSysex(CP_COMMAND, 2, data);
 }
 
 /*==============================================================================
@@ -849,6 +951,14 @@ void loop()
       for (byte i = 0; i < queryIndex + 1; i++) {
         readAndReportData(query[i].addr, query[i].reg, query[i].bytes);
       }
+    }
+    // Check if a tap event should be streamed to the firmata client.
+    if (streamTap) {
+      sendTapResponse();
+    }
+    // Check if an accelerometer event should be streamed to the firmata client.
+    if (streamAccel) {
+      sendAccelResponse();
     }
   }
 }

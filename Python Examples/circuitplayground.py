@@ -27,6 +27,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 from PyMata.pymata import PyMata
+from binascii import hexlify
 
 
 # Constants that define the Circuit Playground Firmata command values.
@@ -36,6 +37,18 @@ CP_PIXEL_SHOW  = 0x11
 CP_PIXEL_CLEAR = 0x12
 CP_TONE        = 0x20
 CP_NO_TONE     = 0x21
+CP_ACCEL_READ       = 0x30
+CP_ACCEL_TAP        = 0x31
+CP_ACCEL_ON         = 0x32
+CP_ACCEL_OFF        = 0x33
+CP_ACCEL_TAP_ON     = 0x34
+CP_ACCEL_TAP_OFF    = 0x35
+CP_ACCEL_READ_REPLY = 0x36
+CP_ACCEL_TAP_REPLY  = 0x37
+CP_ACCEL_TAP_STREAM_ON  = 0x38
+CP_ACCEL_TAP_STREAM_OFF = 0x39
+CP_ACCEL_STREAM_ON   = 0x3A
+CP_ACCEL_STREAM_OFF  = 0x3B
 
 
 class CircuitPlayground(PyMata):
@@ -43,6 +56,41 @@ class CircuitPlayground(PyMata):
     def __init__(self, port_id='/dev/ttyACM0', bluetooth=True, verbose=True):
         # PyMata is an old style class so you can't use super.
         PyMata.__init__(self, port_id, bluetooth, verbose)
+        # Setup handler for response data.
+        # Note that the data length (1) appears to be unused for these sysex
+        # responses.
+        self._command_handler.command_dispatch.update({CP_COMMAND: [self._response_handler, 1]})
+        # Setup configured callbacks to null.
+        self._accel_callback = None
+        self._tap_callback = None
+
+    def _response_handler(self, data):
+        #print('CP response: 0x{0}'.format(hexlify(bytearray(data))))
+        if len(data) < 1:
+            print('Response with no data received!')
+            return
+        # Check what type of response has been received.
+        command = data[0] & 0x7F
+        if command == CP_ACCEL_READ_REPLY:
+            # Parse accelerometer response.
+            if len(data) < 10:
+                print('Not enough params for accel reply!')
+                return
+            x = ((data[3] & 0x03) << 14) | ((data[2] & 0x7F) << 7) | (data[1] & 0x7F)
+            y = ((data[6] & 0x03) << 14) | ((data[5] & 0x7F) << 7) | (data[4] & 0x7F)
+            z = ((data[9] & 0x03) << 14) | ((data[8] & 0x7F) << 7) | (data[7] & 0x7F)
+            if self._accel_callback is not None:
+                self._accel_callback(x, y ,z)
+        elif command == CP_ACCEL_TAP_REPLY:
+            # Parse accelerometer tap response.
+            if len(data) < 4:
+                print('Not enough params for accel tap reply!')
+                return
+            tap = ((data[3] & 0x01) << 7) | (data[2] & 0x7F)
+            if self._tap_callback is not None:
+                self._tap_callback(tap)
+        else:
+            print('Unknown response received!')
 
     def set_pixel(self, pixel, red, green, blue):
         """Set the specified pixel (0-9) of the Circuit Playground board to the
@@ -94,3 +142,42 @@ class CircuitPlayground(PyMata):
     def no_tone(self):
         """Stop all tone playback on the Circuit Playground board speaker."""
         self._command_handler.send_sysex(CP_COMMAND, [CP_NO_TONE])
+
+    def read_accel(self, callback):
+        """Request an accelerometer reading.  The result will be returned by
+        calling the provided callback function and passing it 3 parameters:
+         - X acceleration
+         - Y acceleration
+         - Z acceleration
+        """
+        self._accel_callback = callback
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_READ])
+
+    def read_tap(self, callback):
+        """Request a tap state reading.  The result will be returned by
+        calling the provided callback function and passing it the tap state byte.
+        """
+        self._tap_callback = callback
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_TAP])
+
+    def start_tap(self, callback):
+        """Request to start streaming tap data from the board.  Will call the
+        provided callback with tap data."""
+        self._tap_callback = callback
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_TAP_STREAM_ON])
+
+    def stop_tap(self):
+        """Stop streaming tap data from the board."""
+        self._tap_callback = None
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_TAP_STREAM_OFF])
+
+    def start_accel(self, callback):
+        """Request to start streaming accelerometer data from the board.  Will
+        call the provided callback with tap data."""
+        self._accel_callback = callback
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_STREAM_ON])
+
+    def stop_accel(self):
+        """Stop streaming tap data from the board."""
+        self._accel_callback = None
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_STREAM_OFF])
