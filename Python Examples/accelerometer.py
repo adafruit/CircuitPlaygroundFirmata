@@ -15,15 +15,11 @@ port = sys.argv[1]
 # Connect to Circuit Playground board on specified port.
 board = CircuitPlayground(port)
 
-
 def accel_data(x, y, z):
     print('Received accelerometer data!')
     print('X = {0}'.format(x))
     print('Y = {0}'.format(y))
     print('Z = {0}'.format(z))
-
-def tap_data(tap):
-    print('Received tap data: 0x{0:0X}'.format(tap))
 
 # Grab an accelerometer reading every 2 seconds.
 print('Printing accelerometer data (Ctrl-C to quit)...')

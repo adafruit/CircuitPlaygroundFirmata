@@ -15,9 +15,15 @@ port = sys.argv[1]
 # Connect to Circuit Playground board on specified port.
 board = CircuitPlayground(port)
 
-
-def tap_data(tap):
-    print('Received tap data: 0x{0:0X}'.format(tap))
+# Callback that will be called when a tap is detected.  The single parameter is
+# a boolean that indicates if it was a single tap, and the double parameter is
+# a boolean that indicates if it was a double tap.  You might see both a single
+# and double tap!
+def tap_data(single, double):
+    if single:
+        print('Single click!')
+    if double:
+        print('Double click!')
 
 # Stream tap data for 2 seconds, then pause for 5 seconds and stream forever.
 print('Streaming tap data for 2 seconds...')

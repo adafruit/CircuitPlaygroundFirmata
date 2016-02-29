@@ -26,8 +26,12 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-from PyMata.pymata import PyMata
+import atexit
 from binascii import hexlify
+import math
+import struct
+
+from PyMata.pymata import PyMata
 
 
 # Constants that define the Circuit Playground Firmata command values.
@@ -50,6 +54,13 @@ CP_ACCEL_TAP_STREAM_OFF = 0x39
 CP_ACCEL_STREAM_ON   = 0x3A
 CP_ACCEL_STREAM_OFF  = 0x3B
 
+# Constants for some of the board peripherals
+THERM_PIN          = 0        # Analog input connected to the thermistor.
+THERM_SERIES_OHMS  = 10000.0  # Resistor value in series with thermistor.
+THERM_NOMINAL_OHMS = 10000.0  # Thermistor resistance at 25 degrees C.
+THERM_NOMIMAL_C    = 25.0     # Thermistor temperature at nominal resistance.
+THERM_BETA         = 3950.0   # Thermistor beta coefficient.
+
 
 class CircuitPlayground(PyMata):
 
@@ -63,32 +74,97 @@ class CircuitPlayground(PyMata):
         # Setup configured callbacks to null.
         self._accel_callback = None
         self._tap_callback = None
+        self._temp_callback = None
+
+    def _therm_value_to_temp(self, adc_value):
+        """Convert a thermistor ADC value to a temperature in Celsius."""
+        # Use Steinhart-Hart thermistor equation to convert thermistor resistance to
+        # temperature.  See: https://learn.adafruit.com/thermistor/overview
+        # Handle a zero value which has no meaning (and would cause a divide by zero).
+        if adc_value == 0:
+            return float('NaN')
+        # First calculate the resistance of the thermistor based on its ADC value.
+        resistance = ((1023.0 * THERM_SERIES_OHMS)/adc_value)
+        resistance -= THERM_SERIES_OHMS
+        # Now apply Steinhart-Hart equation.
+        steinhart = resistance / THERM_NOMINAL_OHMS
+        steinhart = math.log(steinhart)
+        steinhart /= THERM_BETA
+        steinhart += 1.0 / (THERM_NOMIMAL_C + 273.15)
+        steinhart = 1.0 / steinhart
+        steinhart -= 273.15
+        return steinhart
+
+    def _therm_handler(self, data):
+        """Callback invoked when the thermistor analog input has a new value.
+        """
+        # Get the raw ADC value and convert to temperature.
+        raw = data[2]
+        temp_c = self._therm_value_to_temp(raw)
+        # Call any user callback
+        if self._temp_callback is not None:
+            self._temp_callback(temp_c, raw)
+
+    def _parse_firmata_byte(self, data):
+        """Parse a byte value from two 7-bit byte firmata response bytes."""
+        if len(data) != 2:
+            raise ValueError('Expected 2 bytes of firmata repsonse for a byte value!')
+        return (data[0] & 0x7F) | ((data[1] & 0x01) << 7)
+
+    def _parse_firmata_float(self, data):
+        """Parse a 4 byte floating point value from a 7-bit byte firmata response
+        byte array.  Each pair of firmata 7-bit response bytes represents a single
+        byte of float data so there should be 8 firmata response bytes total.
+        """
+        if len(data) != 8:
+            raise ValueError('Expected 8 bytes of firmata response for floating point value!')
+        # Convert 2 7-bit bytes in little endian format to 1 8-bit byte for each
+        # of the four floating point bytes.
+        raw_bytes = bytearray(4)
+        for i in range(4):
+            raw_bytes[i] = self._parse_firmata_byte(data[i*2:i*2+2])
+        # Use struct unpack to convert to floating point value.
+        return struct.unpack('<f', raw_bytes)[0]
+
+    def _tap_register_to_clicks(self, register):
+        """Convert accelerometer tap register value to booleans that indicate
+        if a single and/or double tap have been detected.  Returns a tuple
+        of bools with single click boolean and double click boolean.
+        """
+        single = False
+        double = False
+        # Check if there is a good tap register value and check the single and
+        # double tap bits to set the appropriate bools.
+        if register & 0x30 > 0:
+            single = True if register & 0x10 > 0 else False
+            double = True if register & 0x20 > 0 else False
+        return (single, double)
 
     def _response_handler(self, data):
+        """Callback invoked when a circuit playground sysex command is received.
+        """
         #print('CP response: 0x{0}'.format(hexlify(bytearray(data))))
         if len(data) < 1:
-            print('Response with no data received!')
             return
         # Check what type of response has been received.
         command = data[0] & 0x7F
         if command == CP_ACCEL_READ_REPLY:
             # Parse accelerometer response.
-            if len(data) < 10:
-                print('Not enough params for accel reply!')
+            if len(data) < 26:
                 return
-            x = ((data[3] & 0x03) << 14) | ((data[2] & 0x7F) << 7) | (data[1] & 0x7F)
-            y = ((data[6] & 0x03) << 14) | ((data[5] & 0x7F) << 7) | (data[4] & 0x7F)
-            z = ((data[9] & 0x03) << 14) | ((data[8] & 0x7F) << 7) | (data[7] & 0x7F)
+            x = self._parse_firmata_float(data[2:10])
+            y = self._parse_firmata_float(data[10:18])
+            z = self._parse_firmata_float(data[18:26])
             if self._accel_callback is not None:
                 self._accel_callback(x, y ,z)
         elif command == CP_ACCEL_TAP_REPLY:
             # Parse accelerometer tap response.
             if len(data) < 4:
-                print('Not enough params for accel tap reply!')
+                # TODO: Log errors in some way for debugging.
                 return
-            tap = ((data[3] & 0x01) << 7) | (data[2] & 0x7F)
+            tap = self._parse_firmata_byte(data[2:4])
             if self._tap_callback is not None:
-                self._tap_callback(tap)
+                self._tap_callback(*self._tap_register_to_clicks(tap))
         else:
             print('Unknown response received!')
 
@@ -181,3 +257,37 @@ class CircuitPlayground(PyMata):
         """Stop streaming tap data from the board."""
         self._accel_callback = None
         self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_STREAM_OFF])
+
+    def start_temperature(self, callback=None):
+        """Enable reading data from the thermistor.  Callback is an optional
+        callback function to provide which will be called when a new value
+        is received from the thermistor.  The callback should take two arguments,
+        the temperature in celsius, and the raw ADC value of the thermistor.
+
+        Instead of providing a callback you can call read_temperature to grab
+        the most recent temperature measurement (but you must still call
+        start_temperature once to initialize it!).
+        """
+        self._temp_callback = callback
+        self.set_pin_mode(THERM_PIN, self.INPUT, self.ANALOG, self._therm_handler)
+
+    def stop_temperature(self):
+        """Stop streaming temperature data from the thermistor."""
+        self._temp_callback = None
+        self.disable_analog_reporting(THERM_PIN)
+
+    def read_temperature(self):
+        """Read the temperature from the thermistor and return its value in
+        degrees Celsius.
+        """
+        raw = self.analog_read(THERM_PIN)
+        return self._therm_value_to_temp(raw)
+
+    def read_temperature_raw(self):
+        """Read the raw ADC conversion value from the thermistor.  This is a value
+        that has no units and is instead a number from 0-1023.  Use the
+        read_temperature function if you want a nice temperature value in degrees
+        Celsius!
+        """
+        raw = self.analog_read(THERM_PIN)
+        return raw

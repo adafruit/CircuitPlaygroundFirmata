@@ -36,6 +36,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_LIS3DH.h>
 #include <Adafruit_Sensor.h>
+#include <CapacitiveSensor.h>
 
 #define I2C_WRITE                   B00000000
 #define I2C_READ                    B00001000
@@ -78,6 +79,7 @@
 #define CP_ACCEL_TAP_STREAM_OFF  0x39  // Turn off streaming of tap data.
 #define CP_ACCEL_STREAM_ON   0x3A   // Turn on continuous streaming of accelerometer data.
 #define CP_ACCEL_STREAM_OFF  0x3B   // Turn off streaming of accelerometer data.
+
 
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL   1
@@ -886,25 +888,33 @@ void setup()
 }
 
 // Read the accelerometer and send a response packet.
-void sendAccelResponse() {
-  // Get an accelerometer x, y, z reading.
-  accel.read();
+void sendAccelResponse() {  
+  // Get an accelerometer X, Y, Z reading.
+  sensors_event_t event;
+  accel.getEvent(&event);
   // Construct a response data packet.
-  uint8_t data[7] = {0};
+  uint8_t data[13] = {0};
   data[0] = CP_ACCEL_READ_REPLY;
-  // Put the 3 16-bit readings into the packet.
+  // Put the three 32-bit float X,Y,Z reading into the packet.
   // Note that Firmata.sendSysex will automatically convert bytes into
   // two 7-bit bytes that are Firmata/MIDI compatible.
-  data[1] = accel.x & 0xFF;
-  data[2] = (accel.x >> 8) & 0xFF;
-  data[3] = accel.y & 0xFF;
-  data[4] = (accel.y >> 8) & 0xFF;
-  data[5] = accel.z & 0xFF;
-  data[6] = (accel.z >> 8) & 0xFF;
+  // Use a union to easily grab the bytes of the float.
+  union {
+    float value;
+    uint8_t bytes[4];
+  } reading;
+  // Grab each X, Y, Z float byte value and copy it into the response.
+  reading.value = event.acceleration.x;
+  memcpy(data+1, reading.bytes, 4);
+  reading.value = event.acceleration.y;
+  memcpy(data+5, reading.bytes, 4);
+  reading.value = event.acceleration.z;
+  memcpy(data+9, reading.bytes, 4);
   // Send the response.
-  Firmata.sendSysex(CP_COMMAND, 7, data);
+  Firmata.sendSysex(CP_COMMAND, 13, data);
 }
 
+// Read the accelerometer tap detection and send a response packet.
 void sendTapResponse() {
   // Get the accelerometer tap detection state.
   uint8_t click = accel.getClick();
