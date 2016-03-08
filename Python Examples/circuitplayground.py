@@ -28,6 +28,7 @@
 # SOFTWARE.
 import atexit
 from binascii import hexlify
+import logging
 import math
 import struct
 
@@ -35,24 +36,28 @@ from PyMata.pymata import PyMata
 
 
 # Constants that define the Circuit Playground Firmata command values.
-CP_COMMAND     = 0x40
-CP_PIXEL_SET   = 0x10
-CP_PIXEL_SHOW  = 0x11
-CP_PIXEL_CLEAR = 0x12
-CP_TONE        = 0x20
-CP_NO_TONE     = 0x21
-CP_ACCEL_READ       = 0x30
-CP_ACCEL_TAP        = 0x31
-CP_ACCEL_ON         = 0x32
-CP_ACCEL_OFF        = 0x33
-CP_ACCEL_TAP_ON     = 0x34
-CP_ACCEL_TAP_OFF    = 0x35
-CP_ACCEL_READ_REPLY = 0x36
-CP_ACCEL_TAP_REPLY  = 0x37
+CP_COMMAND              = 0x40
+CP_PIXEL_SET            = 0x10
+CP_PIXEL_SHOW           = 0x11
+CP_PIXEL_CLEAR          = 0x12
+CP_TONE                 = 0x20
+CP_NO_TONE              = 0x21
+CP_ACCEL_READ           = 0x30
+CP_ACCEL_TAP            = 0x31
+CP_ACCEL_ON             = 0x32
+CP_ACCEL_OFF            = 0x33
+CP_ACCEL_TAP_ON         = 0x34
+CP_ACCEL_TAP_OFF        = 0x35
+CP_ACCEL_READ_REPLY     = 0x36
+CP_ACCEL_TAP_REPLY      = 0x37
 CP_ACCEL_TAP_STREAM_ON  = 0x38
 CP_ACCEL_TAP_STREAM_OFF = 0x39
-CP_ACCEL_STREAM_ON   = 0x3A
-CP_ACCEL_STREAM_OFF  = 0x3B
+CP_ACCEL_STREAM_ON      = 0x3A
+CP_ACCEL_STREAM_OFF     = 0x3B
+CP_CAP_READ             = 0x40
+CP_CAP_ON               = 0x41
+CP_CAP_OFF              = 0x42
+CP_CAP_REPLY            = 0x43
 
 # Constants for some of the board peripherals
 THERM_PIN          = 0        # Analog input connected to the thermistor.
@@ -60,6 +65,11 @@ THERM_SERIES_OHMS  = 10000.0  # Resistor value in series with thermistor.
 THERM_NOMINAL_OHMS = 10000.0  # Thermistor resistance at 25 degrees C.
 THERM_NOMIMAL_C    = 25.0     # Thermistor temperature at nominal resistance.
 THERM_BETA         = 3950.0   # Thermistor beta coefficient.
+CAP_THRESHOLD      = 300      # Threshold for considering a cap touch input pressed.
+                              # If the cap touch value is above this value it is
+                              # considered touched.
+
+logger = logging.getLogger(__name__)
 
 
 class CircuitPlayground(PyMata):
@@ -75,6 +85,7 @@ class CircuitPlayground(PyMata):
         self._accel_callback = None
         self._tap_callback = None
         self._temp_callback = None
+        self._cap_callback = None
 
     def _therm_value_to_temp(self, adc_value):
         """Convert a thermistor ADC value to a temperature in Celsius."""
@@ -126,6 +137,21 @@ class CircuitPlayground(PyMata):
         # Use struct unpack to convert to floating point value.
         return struct.unpack('<f', raw_bytes)[0]
 
+    def _parse_firmata_long(self, data):
+        """Parse a 4 byte signed long integer value from a 7-bit byte firmata response
+        byte array.  Each pair of firmata 7-bit response bytes represents a single
+        byte of long data so there should be 8 firmata response bytes total.
+        """
+        if len(data) != 8:
+            raise ValueError('Expected 8 bytes of firmata response for long value!')
+        # Convert 2 7-bit bytes in little endian format to 1 8-bit byte for each
+        # of the four floating point bytes.
+        raw_bytes = bytearray(4)
+        for i in range(4):
+            raw_bytes[i] = self._parse_firmata_byte(data[i*2:i*2+2])
+        # Use struct unpack to convert to floating point value.
+        return struct.unpack('<l', raw_bytes)[0]
+
     def _tap_register_to_clicks(self, register):
         """Convert accelerometer tap register value to booleans that indicate
         if a single and/or double tap have been detected.  Returns a tuple
@@ -143,14 +169,16 @@ class CircuitPlayground(PyMata):
     def _response_handler(self, data):
         """Callback invoked when a circuit playground sysex command is received.
         """
-        #print('CP response: 0x{0}'.format(hexlify(bytearray(data))))
+        logger.debug('CP response: 0x{0}'.format(hexlify(bytearray(data))))
         if len(data) < 1:
+            logger.warning('Received response with no data!')
             return
         # Check what type of response has been received.
         command = data[0] & 0x7F
         if command == CP_ACCEL_READ_REPLY:
             # Parse accelerometer response.
             if len(data) < 26:
+                logger.warning('Received accelerometer response with not enough data!')
                 return
             x = self._parse_firmata_float(data[2:10])
             y = self._parse_firmata_float(data[10:18])
@@ -160,13 +188,22 @@ class CircuitPlayground(PyMata):
         elif command == CP_ACCEL_TAP_REPLY:
             # Parse accelerometer tap response.
             if len(data) < 4:
-                # TODO: Log errors in some way for debugging.
+                logger.warning('Received tap response with not enough data!')
                 return
             tap = self._parse_firmata_byte(data[2:4])
             if self._tap_callback is not None:
                 self._tap_callback(*self._tap_register_to_clicks(tap))
+        elif command == CP_CAP_REPLY:
+            # Parse capacitive sensor response.
+            if len(data) < 12:
+                logger.warning('Received cap touch response with not enough data!')
+                return
+            input_pin = self._parse_firmata_byte(data[2:4])
+            value = self._parse_firmata_long(data[4:12])
+            if self._cap_callback is not None:
+                self._cap_callback(input_pin, value > CAP_THRESHOLD, value)
         else:
-            print('Unknown response received!')
+            logger.warning('Received unexpected response!')
 
     def set_pixel(self, pixel, red, green, blue):
         """Set the specified pixel (0-9) of the Circuit Playground board to the
@@ -291,3 +328,39 @@ class CircuitPlayground(PyMata):
         """
         raw = self.analog_read(THERM_PIN)
         return raw
+
+    def read_cap_touch(self, input_pin, callback=None):
+        """Read the specified input pin as a capacitive touch sensor.  Will
+        invoke the provided callback when the result is available (note this
+        callback is global and will override any previously specified callback).
+        The callback should take three parameters, one that is the cap touch input
+        pin, the next that is a boolean if the cap input was 'pressed' (i.e. above
+        a large enough threshold), and a signed integer value that's the raw cap
+        touch library result (bigger values mean more capacitance, i.e. something
+        is touching the input).
+        """
+        assert input_pin in [0, 1, 2, 3, 6, 9, 10, 12], 'Input pin must be a capacitive input (0,1,2,3,6,9,10,12)!'
+        self._cap_callback = callback
+        # Construct a cap read command and send it.
+        self._command_handler.send_sysex(CP_COMMAND, [CP_CAP_READ, input_pin & 0x7F])
+
+    def start_cap_touch(self, input_pin, callback=None):
+        """Start continuous capacitive touch queries for the specified input
+        pin.  Will invoke the provided callback each time a new cap touch result
+        is available (note this callback is global and will override any other
+        instances previously specified).  See read_cap_touch for a description of
+        the callback parameters.
+        """
+        assert input_pin in [0, 1, 2, 3, 6, 9, 10, 12], 'Input pin must be a capacitive input (0,1,2,3,6,9,10,12)!'
+        self._cap_callback = callback
+        # Construct a continuous cap read start command and send it.
+        self._command_handler.send_sysex(CP_COMMAND, [CP_CAP_ON, input_pin & 0x7F])
+
+    def stop_cap_touch(self, input_pin):
+        """Stop continuous capacitive touch queries for the specified input
+        pin.
+        """
+        assert input_pin in [0, 1, 2, 3, 6, 9, 10, 12], 'Input pin must be a capacitive input (0,1,2,3,6,9,10,12)!'
+        self._cap_callback = None
+        # Construct a continuous cap read stop command and send it.
+        self._command_handler.send_sysex(CP_COMMAND, [CP_CAP_OFF, input_pin & 0x7F])

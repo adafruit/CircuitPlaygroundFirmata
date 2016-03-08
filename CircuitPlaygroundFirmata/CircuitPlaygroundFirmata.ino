@@ -48,38 +48,48 @@
 #define I2C_REGISTER_NOT_SPECIFIED  -1
 
 // Circuit playground configuration:
-#define PIXEL_COUNT    10
-#define PIXEL_PIN      17
-#define PIXEL_TYPE     NEO_GRB + NEO_KHZ800
-#define SPEAKER_PIN    5
-#define LIS3DH_ADDR    0x18
-#define LIS3DH_CS      8
+#define PIXEL_COUNT    10     // Number of NeoPixels on the board.
+#define PIXEL_PIN      17     // Digital pin connected to the NeoPixel signal line.
+#define PIXEL_TYPE     NEO_GRB + NEO_KHZ800  // NeoPixel type.
+#define SPEAKER_PIN    5      // Digital pin connected to the speaker.
+#define LIS3DH_ADDR    0x18   // LIS3DH I2C address (not used).
+#define LIS3DH_CS      8      // LIS3DH chip select line.
+#define CAP_COUNT      8      // Number of cap touch inputs.
+#define CAP_COMMON     30     // Digital input as the common cap touch pin.
+#define CAP_SAMPLES    30     // Number of samples to take for a cap touch input.
 
 // Circuit playground-specific Firmata SysEx commands:
-#define CP_COMMAND     0x40  // Byte that identifies all Circuit Playground commands.
-#define CP_PIXEL_SET   0x10  // Set NeoPixel, expects the following bytes as data:
-                             //  - Pixel ID (0-9)
-                             //  - Pixel RGB color data as 4 7-bit bytes.  The upper
-                             //    24 bits will be mapped to the R, G, B bytes.
-#define CP_PIXEL_SHOW  0x11  // Update NeoPixels with their current color values.
-#define CP_PIXEL_CLEAR 0x12  // Clear all NeoPixels to black/off.  Must call show pixels after this to see the change!
-#define CP_TONE        0x20  // Play a tone on the speaker, expects the following bytes as data:
-                             //  - Frequency (hz) as 2 7-bit bytes (up to 2^14 hz, or about 16khz)
-                             //  - Duration (ms) as 2 7-bit bytes.
-#define CP_NO_TONE     0x21  // Stop playing anything on the speaker.
-#define CP_ACCEL_READ    0x30  // Return the current x, y, z accelerometer values.
-#define CP_ACCEL_TAP     0x31  // Return the current accelerometer tap state.
-#define CP_ACCEL_ON      0x32  // Turn on continuous accelerometer readings.
-#define CP_ACCEL_OFF     0x33  // Turn off continuous accelerometer readings.
-#define CP_ACCEL_TAP_ON  0x34  // Turn on notifications of accelerometer taps/double taps.
-#define CP_ACCEL_TAP_OFF 0x35  // Turn off notifications of accelerometer taps/double taps.
-#define CP_ACCEL_READ_REPLY 0x36
-#define CP_ACCEL_TAP_REPLY  0x37
-#define CP_ACCEL_TAP_STREAM_ON   0x38  // Turn on continuous streaming of tap data.
-#define CP_ACCEL_TAP_STREAM_OFF  0x39  // Turn off streaming of tap data.
-#define CP_ACCEL_STREAM_ON   0x3A   // Turn on continuous streaming of accelerometer data.
-#define CP_ACCEL_STREAM_OFF  0x3B   // Turn off streaming of accelerometer data.
-
+#define CP_COMMAND              0x40  // Byte that identifies all Circuit Playground commands.
+#define CP_PIXEL_SET            0x10  // Set NeoPixel, expects the following bytes as data:
+                                      //  - Pixel ID (0-9)
+                                      //  - Pixel RGB color data as 4 7-bit bytes.  The upper
+                                      //    24 bits will be mapped to the R, G, B bytes.
+#define CP_PIXEL_SHOW           0x11  // Update NeoPixels with their current color values.
+#define CP_PIXEL_CLEAR          0x12  // Clear all NeoPixels to black/off.  Must call show pixels after this to see the change!
+#define CP_TONE                 0x20  // Play a tone on the speaker, expects the following bytes as data:
+                                      //  - Frequency (hz) as 2 7-bit bytes (up to 2^14 hz, or about 16khz)
+                                      //  - Duration (ms) as 2 7-bit bytes.
+#define CP_NO_TONE              0x21  // Stop playing anything on the speaker.
+#define CP_ACCEL_READ           0x30  // Return the current x, y, z accelerometer values.
+#define CP_ACCEL_TAP            0x31  // Return the current accelerometer tap state.
+#define CP_ACCEL_ON             0x32  // Turn on continuous accelerometer readings.
+#define CP_ACCEL_OFF            0x33  // Turn off continuous accelerometer readings.
+#define CP_ACCEL_TAP_ON         0x34  // Turn on notifications of accelerometer taps/double taps.
+#define CP_ACCEL_TAP_OFF        0x35  // Turn off notifications of accelerometer taps/double taps.
+#define CP_ACCEL_READ_REPLY     0x36  // Result of an acceleromete read.  Includes 3 floating point values (4 bytes each) with x, y, z
+                                      // acceleration in meters/second^2.
+#define CP_ACCEL_TAP_REPLY      0x37  // Result of the tap sensor read.  Includes a byte with the tap register value.
+#define CP_ACCEL_TAP_STREAM_ON  0x38  // Turn on continuous streaming of tap data.
+#define CP_ACCEL_TAP_STREAM_OFF 0x39  // Turn off streaming of tap data.
+#define CP_ACCEL_STREAM_ON      0x3A  // Turn on continuous streaming of accelerometer data.
+#define CP_ACCEL_STREAM_OFF     0x3B  // Turn off streaming of accelerometer data.
+#define CP_CAP_READ             0x40  // Read a single capacitive input.  Expects a byte as a parameter with the
+                                      // cap touch input to read (0, 1, 2, 3, 6, 9, 10, 12).  Will respond with a
+                                      // CP_CAP_REPLY message.
+#define CP_CAP_ON               0x41  // Turn on continuous cap touch reads for the specified input (sent as a byte parameter).
+#define CP_CAP_OFF              0x42  // Turn off continuous cap touch reads for the specified input (sent as a byte parameter).
+#define CP_CAP_REPLY            0x43  // Capacitive input read response.  Includes a byte with the pin # of the cap input, then
+                                      // four bytes of data which represent an int32_t value read from the cap input.
 
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL   1
@@ -94,6 +104,55 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE)
 Adafruit_LIS3DH accel = Adafruit_LIS3DH(LIS3DH_CS);
 bool streamTap = false;
 bool streamAccel = false;
+// Define type for the cap touch sensor state of each cap touch input.
+typedef struct {
+  CapacitiveSensor sensor;
+  bool streaming;
+  uint8_t pin;
+} cap_state_type;
+
+cap_state_type cap_state[CAP_COUNT] = {
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 0),
+    .streaming = false,
+    .pin       = 0
+  },
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 1),
+    .streaming = false,
+    .pin       = 1
+  },
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 2),
+    .streaming = false,
+    .pin       = 2
+  },
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 3),
+    .streaming = false,
+    .pin       = 3
+  },
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 6),
+    .streaming = false,
+    .pin       = 6
+  },
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 9),
+    .streaming = false,
+    .pin       = 9
+  },
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 10),
+    .streaming = false,
+    .pin       = 10
+  },
+  {
+    .sensor    = CapacitiveSensor(CAP_COMMON, 12),
+    .streaming = false,
+    .pin       = 12
+  }
+};
 
 
 /* analog inputs */
@@ -480,7 +539,11 @@ void reportDigitalCallback(byte port, int value)
   // pins configured as analog
 }
 
-// Process Circuit Playground-specific Firmata commands.
+
+/*==============================================================================
+ * Circuit Playground commands
+ *============================================================================*/
+
 void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
   switch (command) {
     case CP_PIXEL_SET:
@@ -540,7 +603,108 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
     case CP_ACCEL_STREAM_OFF:
       streamAccel = false;
       break;
+    case CP_CAP_READ:
+      // Flip the streaming bool on for the specified input.
+      // First check we have enough parameters and grab the input from the first byte.
+      if (argc >= 1) {
+        uint8_t input = argv[0] & 0x7F;
+        // Now find the specified cap input and send a response with its current cap touch value.
+        for (int i=0; i<CAP_COUNT; ++i) {
+          if (cap_state[i].pin == input) {
+            sendCapResponse(cap_state[i]);
+          }
+        }
+      }
+      break;
+    case CP_CAP_ON:
+      // Flip the streaming bool on for the specified input.
+      // First check we have enough parameters and grab the input from the first byte.
+      if (argc >= 1) {
+        uint8_t input = argv[0] & 0x7F;
+        // Now find the specified cap input and flip on its streaming bit.
+        for (int i=0; i<CAP_COUNT; ++i) {
+          if (cap_state[i].pin == input) {
+            cap_state[i].streaming = true; 
+          }
+        }
+      }
+      break;
+    case CP_CAP_OFF:
+      // Flip the streaming bool off for the specified input.
+      // First check we have enough parameters and grab the input from the first byte.
+      if (argc >= 1) {
+        uint8_t input = argv[0] & 0x7F;
+        // Now find the specified cap input and flip on its streaming bit.
+        for (int i=0; i<CAP_COUNT; ++i) {
+          if (cap_state[i].pin == input) {
+            cap_state[i].streaming = false; 
+          }
+        }
+      }
+      break;
   }
+}
+
+// Read the accelerometer and send a response packet.
+void sendAccelResponse() {  
+  // Get an accelerometer X, Y, Z reading.
+  sensors_event_t event;
+  accel.getEvent(&event);
+  // Construct a response data packet.
+  uint8_t data[13] = {0};
+  data[0] = CP_ACCEL_READ_REPLY;
+  // Put the three 32-bit float X,Y,Z reading into the packet.
+  // Note that Firmata.sendSysex will automatically convert bytes into
+  // two 7-bit bytes that are Firmata/MIDI compatible.
+  // Use a union to easily grab the bytes of the float.
+  union {
+    float value;
+    uint8_t bytes[4];
+  } reading;
+  // Grab each X, Y, Z float byte value and copy it into the response.
+  reading.value = event.acceleration.x;
+  memcpy(data+1, reading.bytes, 4);
+  reading.value = event.acceleration.y;
+  memcpy(data+5, reading.bytes, 4);
+  reading.value = event.acceleration.z;
+  memcpy(data+9, reading.bytes, 4);
+  // Send the response.
+  Firmata.sendSysex(CP_COMMAND, 13, data);
+}
+
+// Read the accelerometer tap detection and send a response packet.
+void sendTapResponse() {
+  // Get the accelerometer tap detection state.
+  uint8_t click = accel.getClick();
+  // Construct a response data packet and send it.
+  uint8_t data[2] = {0};
+  data[0] = CP_ACCEL_TAP_REPLY;
+  data[1] = click;
+  // Send the response.
+  Firmata.sendSysex(CP_COMMAND, 2, data);
+}
+
+// Read the capacitive sensor state and send a response packet.
+void sendCapResponse(cap_state_type& cap_input) {
+  // Get the cap sense value for the provided input.
+  int32_t value = cap_input.sensor.capacitiveSensor(CAP_SAMPLES);
+  // Build a response data packet and send it.  The response includes:
+  // - uint8_t: CP_CAP_REPLY value (0x
+  // - uint8_t: pin number of the read input
+  // - int32_t: cap sensor value, large values mean the input was touched
+  union {
+    struct {
+      uint8_t type;
+      uint8_t pin;
+      int32_t value; 
+    } data;
+    uint8_t bytes[6];
+  } response;
+  response.data.type = CP_CAP_REPLY;
+  response.data.pin = cap_input.pin;
+  response.data.value = value;
+  // Send the response, this will expand each byte into 2 bytes of 7-bit data.
+  Firmata.sendSysex(CP_COMMAND, 6, response.bytes);
 }
 
 /*==============================================================================
@@ -887,45 +1051,6 @@ void setup()
   systemResetCallback();  // reset to default config
 }
 
-// Read the accelerometer and send a response packet.
-void sendAccelResponse() {  
-  // Get an accelerometer X, Y, Z reading.
-  sensors_event_t event;
-  accel.getEvent(&event);
-  // Construct a response data packet.
-  uint8_t data[13] = {0};
-  data[0] = CP_ACCEL_READ_REPLY;
-  // Put the three 32-bit float X,Y,Z reading into the packet.
-  // Note that Firmata.sendSysex will automatically convert bytes into
-  // two 7-bit bytes that are Firmata/MIDI compatible.
-  // Use a union to easily grab the bytes of the float.
-  union {
-    float value;
-    uint8_t bytes[4];
-  } reading;
-  // Grab each X, Y, Z float byte value and copy it into the response.
-  reading.value = event.acceleration.x;
-  memcpy(data+1, reading.bytes, 4);
-  reading.value = event.acceleration.y;
-  memcpy(data+5, reading.bytes, 4);
-  reading.value = event.acceleration.z;
-  memcpy(data+9, reading.bytes, 4);
-  // Send the response.
-  Firmata.sendSysex(CP_COMMAND, 13, data);
-}
-
-// Read the accelerometer tap detection and send a response packet.
-void sendTapResponse() {
-  // Get the accelerometer tap detection state.
-  uint8_t click = accel.getClick();
-  // Construct a response data packet and send it.
-  uint8_t data[2] = {0};
-  data[0] = CP_ACCEL_TAP_REPLY;
-  data[1] = click;
-  // Send the response.
-  Firmata.sendSysex(CP_COMMAND, 2, data);
-}
-
 /*==============================================================================
  * LOOP()
  *============================================================================*/
@@ -969,6 +1094,12 @@ void loop()
     // Check if an accelerometer event should be streamed to the firmata client.
     if (streamAccel) {
       sendAccelResponse();
+    }
+    // Check if any cap touch inputs should be streamed to the firmata client.
+    for (int i=0; i<CAP_COUNT; ++i) {
+      if (cap_state[i].streaming) {
+        sendCapResponse(cap_state[i]);
+      }
     }
   }
 }
