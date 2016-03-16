@@ -2,8 +2,7 @@
 import time
 import sys
 
-# Import CircuitPlayground class from the circuitplayground.py in the same directory.
-from circuitplayground import CircuitPlayground
+from circuitplayground import *
 
 
 # Grab the serial port from the command line parameters.
@@ -15,6 +14,10 @@ port = sys.argv[1]
 # Connect to Circuit Playground board on specified port.
 board = CircuitPlayground(port)
 
+# Change the range of the accelerometer.
+# You can use values like: ACCEL_2G, ACCEL_4G, ACCEL_8G or ACCEL_16G
+# to change the range from small to large.  ACCEL_2G = +/- 2G
+board.set_accel_range(ACCEL_2G)
 
 def accel_data(x, y, z):
     print('Received accelerometer data!')

@@ -54,10 +54,17 @@ CP_ACCEL_TAP_STREAM_ON  = 0x38
 CP_ACCEL_TAP_STREAM_OFF = 0x39
 CP_ACCEL_STREAM_ON      = 0x3A
 CP_ACCEL_STREAM_OFF     = 0x3B
+CP_ACCEL_RANGE          = 0x3C
 CP_CAP_READ             = 0x40
 CP_CAP_ON               = 0x41
 CP_CAP_OFF              = 0x42
 CP_CAP_REPLY            = 0x43
+
+# Accelerometer constants to be passed to set_accel_range.
+ACCEL_2G  = 0
+ACCEL_4G  = 1
+ACCEL_8G  = 2
+ACCEL_16G = 3
 
 # Constants for some of the board peripherals
 THERM_PIN          = 0        # Analog input connected to the thermistor.
@@ -364,3 +371,13 @@ class CircuitPlayground(PyMata):
         self._cap_callback = None
         # Construct a continuous cap read stop command and send it.
         self._command_handler.send_sysex(CP_COMMAND, [CP_CAP_OFF, input_pin & 0x7F])
+
+    def set_accel_range(self, accel_range):
+        """Set the range of the accelerometer.  Accel_range should be a value of:
+          - 0 = +/-2G
+          - 1 = +/-4G
+          - 2 = +/-8G
+          - 3 = +/-16G
+        """
+        assert accel_range in [0, 1, 2, 3], 'Accel range must be one of 0, 1, 2, 3!'
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_RANGE, accel_range & 0x7F])

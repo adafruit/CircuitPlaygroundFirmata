@@ -83,6 +83,8 @@
 #define CP_ACCEL_TAP_STREAM_OFF 0x39  // Turn off streaming of tap data.
 #define CP_ACCEL_STREAM_ON      0x3A  // Turn on continuous streaming of accelerometer data.
 #define CP_ACCEL_STREAM_OFF     0x3B  // Turn off streaming of accelerometer data.
+#define CP_ACCEL_RANGE          0x3C  // Set the range of the accelerometer, takes one byte as a parameter.
+                                      // Use a value 0=+/-2G, 1=+/-4G, 2=+/-8G, 3=+/-16G
 #define CP_CAP_READ             0x40  // Read a single capacitive input.  Expects a byte as a parameter with the
                                       // cap touch input to read (0, 1, 2, 3, 6, 9, 10, 12).  Will respond with a
                                       // CP_CAP_REPLY message.
@@ -640,6 +642,20 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
             cap_state[i].streaming = false; 
           }
         }
+      }
+      break;
+    case CP_ACCEL_RANGE:
+      // Set the range of the accelerometer based on the passed in value.
+      // First check we have enough parameters and grab the input from the first byte.
+      if (argc >= 1) {
+        uint8_t range = argv[0] & 0x7F;
+        // Check the range is an allowed value (0, 1, 2, 3).
+        if (range > 3) {
+          // Unknown range value, stop processing!
+          return;
+        }
+        // Set the range of the accelerometer.
+        accel.setRange((lis3dh_range_t)range);
       }
       break;
   }
