@@ -39,7 +39,7 @@
 #include <CapacitiveSensor.h>
 
 // Uncomment below to enable debug output.
-#define DEBUG_MODE
+//#define DEBUG_MODE
 
 // These defines setup debug output if enabled above (otherwise it
 // turns into no-ops that compile out).
