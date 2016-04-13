@@ -38,6 +38,22 @@
 #include <Adafruit_Sensor.h>
 #include <CapacitiveSensor.h>
 
+// Uncomment below to enable debug output.
+#define DEBUG_MODE
+
+// These defines setup debug output if enabled above (otherwise it
+// turns into no-ops that compile out).
+#define DEBUG_OUTPUT Serial1
+#define DEBUG_BAUD   9600
+
+#ifdef DEBUG_MODE
+  #define DEBUG_PRINT(...) { DEBUG_OUTPUT.print(__VA_ARGS__); }
+  #define DEBUG_PRINTLN(...) { DEBUG_OUTPUT.println(__VA_ARGS__); }
+#else
+  #define DEBUG_PRINT(...) {}
+  #define DEBUG_PRINTLN(...) {}
+#endif
+
 #define I2C_WRITE                   B00000000
 #define I2C_READ                    B00001000
 #define I2C_READ_CONTINUOUSLY       B00010000
@@ -72,10 +88,6 @@
 #define CP_NO_TONE              0x21  // Stop playing anything on the speaker.
 #define CP_ACCEL_READ           0x30  // Return the current x, y, z accelerometer values.
 #define CP_ACCEL_TAP            0x31  // Return the current accelerometer tap state.
-#define CP_ACCEL_ON             0x32  // Turn on continuous accelerometer readings.
-#define CP_ACCEL_OFF            0x33  // Turn off continuous accelerometer readings.
-#define CP_ACCEL_TAP_ON         0x34  // Turn on notifications of accelerometer taps/double taps.
-#define CP_ACCEL_TAP_OFF        0x35  // Turn off notifications of accelerometer taps/double taps.
 #define CP_ACCEL_READ_REPLY     0x36  // Result of an acceleromete read.  Includes 3 floating point values (4 bytes each) with x, y, z
                                       // acceleration in meters/second^2.
 #define CP_ACCEL_TAP_REPLY      0x37  // Result of the tap sensor read.  Includes a byte with the tap register value.
@@ -85,6 +97,12 @@
 #define CP_ACCEL_STREAM_OFF     0x3B  // Turn off streaming of accelerometer data.
 #define CP_ACCEL_RANGE          0x3C  // Set the range of the accelerometer, takes one byte as a parameter.
                                       // Use a value 0=+/-2G, 1=+/-4G, 2=+/-8G, 3=+/-16G
+#define CP_ACCEL_TAP_CONFIG     0x3D  // Set the sensitivity of the tap detection, takes 4 bytes of 7-bit firmata
+                                      // data as parameters which expand to 2 unsigned 8-bit bytes value to set:
+                                      //   - Type of click: 0 = no click detection, 1 = single click, 2 = single & double click (default)
+                                      //   - Click threshold: 0-255, the higher the value the less sensitive.  Depends on the accelerometer
+                                      //     range, good values are: +/-16G = 5-10, +/-8G = 10-20, +/-4G = 20-40, +/-2G = 40-80
+                                      //     80 is the default value (goes well with default of +/-2G) 
 #define CP_CAP_READ             0x40  // Read a single capacitive input.  Expects a byte as a parameter with the
                                       // cap touch input to read (0, 1, 2, 3, 6, 9, 10, 12).  Will respond with a
                                       // CP_CAP_REPLY message.
@@ -658,6 +676,17 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         accel.setRange((lis3dh_range_t)range);
       }
       break;
+    case CP_ACCEL_TAP_CONFIG:
+      // Set the sensitivity of tap detection.
+      // Expects 4 7-bit firmata bytes as input, which expand to 2 bytes of 8-bit unsigned data.
+      // First check we have enough parameters.
+      if (argc >= 4) {
+        // Parse out paramemters.
+        uint8_t type = ((argv[1] & 0x01) << 7) || (argv[0] & 0x7F);
+        uint8_t threshold = ((argv[3] & 0x01) << 7) || (argv[2] & 0x7F);
+        // Set the click threshold values.
+        accel.setClick(type, threshold);
+      }
   }
 }
 
@@ -965,6 +994,10 @@ void systemResetCallback()
   // initialize a defalt state
   // TODO: option to load config from EEPROM instead of default
 
+  // Reset circuit playground components to a default state with nothing running.
+  // (i.e. no pixels lit, no sound, no data streaming back)
+  circuitPlaygroundReset();
+
   if (isI2CEnabled) {
     disableI2CPins();
   }
@@ -1006,16 +1039,45 @@ void systemResetCallback()
   isResetting = false;
 }
 
+void circuitPlaygroundReset() {
+  // Reset the circuit playground components into a default state
+  // with none of the pixels lit, no tones playing, and no cap touch
+  // or accelerometer data streaming back.
+
+  // Turn off all the NeoPixels.
+  pixels.clear();
+  pixels.show();
+
+  // Reset the accelerometer to a default range.
+  accel.setRange(LIS3DH_RANGE_2_G);
+  delay(100);
+  accel.setClick(2, 80);
+  delay(100);
+
+  // Turn off streaming of tap, accel, and cap touch data.
+  streamTap = false;
+  streamAccel = false;
+  for (int i=0; i<CAP_COUNT; ++i) {
+    cap_state[i].streaming = false;
+  }
+
+  // Stop any tones on the speaker.
+  noTone(SPEAKER_PIN);
+}
+
 void setup()
 {
   // Circuit playground debug setup
-  Serial1.begin(57600);
-  Serial1.println("Circuit Playground Firmata starting up!");
+  #ifdef DEBUG_MODE
+    DEBUG_OUTPUT.begin(DEBUG_BAUD);
+    DEBUG_PRINTLN("Circuit Playground Firmata starting up!");
+  #endif
   
   // Circuit playground setup:
   pixels.begin();
-  pixels.show();
   if (!accel.begin()) {
+    // Failed to initialize accelerometer, fast blink the red LED on the board.
+    DEBUG_PRINTLN("Failed to initialize accelerometer!");
     pinMode(13, OUTPUT);
     while (1) {
       digitalWrite(13, LOW);
@@ -1024,15 +1086,7 @@ void setup()
       delay(100);
     }
   }
-  // TODO: Expose function to set LIS3DH range, click threshold, etc.
-  accel.setRange(LIS3DH_RANGE_2_G);
-  delay(100);
-  accel.setClick(2, 80);
-  delay(100);
-  Serial1.print("Range = "); Serial1.print(2 << accel.getRange());  
-  Serial1.println("G");
-  Serial1.print("Click = "); Serial1.println(accel.getClick(), HEX);
-  
+    
   Firmata.setFirmwareVersion(FIRMATA_MAJOR_VERSION, FIRMATA_MINOR_VERSION);
 
   Firmata.attach(ANALOG_MESSAGE, analogWriteCallback);

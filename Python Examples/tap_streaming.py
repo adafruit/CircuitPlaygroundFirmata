@@ -15,6 +15,22 @@ port = sys.argv[1]
 # Connect to Circuit Playground board on specified port.
 board = CircuitPlayground(port)
 
+# You can optionally set the sensitivity of tap detection by calling
+# the set_tap_config function.  This takes in two parameters:
+# - Tap type:
+#    0 = no tap detection
+#    1 = single tap detection
+#    2 = single & double tap detection (default)
+# - Tap threshold, a value of 0-255 where the higher the value the less sensitive
+#   the tap detection.  This value depends on the accelerometer range (see the
+#   set_accel_range function in the accelerometer_streaming.py example) and good
+#   values for each range are:
+#     - Accel range +/-16G = 5-10
+#     - Accel range +/-8G  = 10-20
+#     - Accel range +/-4G  = 20-40
+#     - Accel range +/-2G  = 40-80 (80 is the default)
+board.set_tap_config(2, 80)
+
 # Callback that will be called when a tap is detected.  The single parameter is
 # a boolean that indicates if it was a single tap, and the double parameter is
 # a boolean that indicates if it was a double tap.  You might see both a single

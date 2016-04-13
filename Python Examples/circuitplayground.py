@@ -36,29 +36,41 @@ from PyMata.pymata import PyMata
 
 
 # Constants that define the Circuit Playground Firmata command values.
-CP_COMMAND              = 0x40
-CP_PIXEL_SET            = 0x10
-CP_PIXEL_SHOW           = 0x11
-CP_PIXEL_CLEAR          = 0x12
-CP_TONE                 = 0x20
-CP_NO_TONE              = 0x21
-CP_ACCEL_READ           = 0x30
-CP_ACCEL_TAP            = 0x31
-CP_ACCEL_ON             = 0x32
-CP_ACCEL_OFF            = 0x33
-CP_ACCEL_TAP_ON         = 0x34
-CP_ACCEL_TAP_OFF        = 0x35
-CP_ACCEL_READ_REPLY     = 0x36
-CP_ACCEL_TAP_REPLY      = 0x37
-CP_ACCEL_TAP_STREAM_ON  = 0x38
-CP_ACCEL_TAP_STREAM_OFF = 0x39
-CP_ACCEL_STREAM_ON      = 0x3A
-CP_ACCEL_STREAM_OFF     = 0x3B
-CP_ACCEL_RANGE          = 0x3C
-CP_CAP_READ             = 0x40
-CP_CAP_ON               = 0x41
-CP_CAP_OFF              = 0x42
-CP_CAP_REPLY            = 0x43
+CP_COMMAND              = 0x40  # Byte that identifies all Circuit Playground commands.
+CP_PIXEL_SET            = 0x10  # Set NeoPixel, expects the following bytes as data:
+                                #  - Pixel ID (0-9)
+                                #  - Pixel RGB color data as 4 7-bit bytes.  The upper
+                                #    24 bits will be mapped to the R, G, B bytes.
+CP_PIXEL_SHOW           = 0x11  # Update NeoPixels with their current color values.
+CP_PIXEL_CLEAR          = 0x12  # Clear all NeoPixels to black/off.  Must call show pixels after this to see the change!
+CP_TONE                 = 0x20  # Play a tone on the speaker, expects the following bytes as data:
+                                #  - Frequency (hz) as 2 7-bit bytes (up to 2^14 hz, or about 16khz)
+                                #  - Duration (ms) as 2 7-bit bytes.
+CP_NO_TONE              = 0x21  # Stop playing anything on the speaker.
+CP_ACCEL_READ           = 0x30  # Return the current x, y, z accelerometer values.
+CP_ACCEL_TAP            = 0x31  # Return the current accelerometer tap state.
+CP_ACCEL_READ_REPLY     = 0x36  # Result of an acceleromete read.  Includes 3 floating point values (4 bytes each) with x, y, z
+                                # acceleration in meters/second^2.
+CP_ACCEL_TAP_REPLY      = 0x37  # Result of the tap sensor read.  Includes a byte with the tap register value.
+CP_ACCEL_TAP_STREAM_ON  = 0x38  # Turn on continuous streaming of tap data.
+CP_ACCEL_TAP_STREAM_OFF = 0x39  # Turn off streaming of tap data.
+CP_ACCEL_STREAM_ON      = 0x3A  # Turn on continuous streaming of accelerometer data.
+CP_ACCEL_STREAM_OFF     = 0x3B  # Turn off streaming of accelerometer data.
+CP_ACCEL_RANGE          = 0x3C  # Set the range of the accelerometer, takes one byte as a parameter.
+                                # Use a value 0=+/-2G, 1=+/-4G, 2=+/-8G, 3=+/-16G
+CP_ACCEL_TAP_CONFIG     = 0x3D  # Set the sensitivity of the tap detection, takes 4 bytes of 7-bit firmata
+                                # data as parameters which expand to 2 unsigned 8-bit bytes value to set:
+                                #   - Type of click: 0 = no click detection, 1 = single click, 2 = single & double click (default)
+                                #   - Click threshold: 0-255, the higher the value the less sensitive.  Depends on the accelerometer
+                                #     range, good values are: +/-16G = 5-10, +/-8G = 10-20, +/-4G = 20-40, +/-2G = 40-80
+                                #     80 is the default value (goes well with default of +/-2G)
+CP_CAP_READ             = 0x40  # Read a single capacitive input.  Expects a byte as a parameter with the
+                                # cap touch input to read (0, 1, 2, 3, 6, 9, 10, 12).  Will respond with a
+                                # CP_CAP_REPLY message.
+CP_CAP_ON               = 0x41  # Turn on continuous cap touch reads for the specified input (sent as a byte parameter).
+CP_CAP_OFF              = 0x42  # Turn off continuous cap touch reads for the specified input (sent as a byte parameter).
+CP_CAP_REPLY            = 0x43  # Capacitive input read response.  Includes a byte with the pin # of the cap input, then
+                                # four bytes of data which represent an int32_t value read from the cap input.
 
 # Accelerometer constants to be passed to set_accel_range.
 ACCEL_2G  = 0
@@ -372,12 +384,38 @@ class CircuitPlayground(PyMata):
         # Construct a continuous cap read stop command and send it.
         self._command_handler.send_sysex(CP_COMMAND, [CP_CAP_OFF, input_pin & 0x7F])
 
-    def set_accel_range(self, accel_range):
+    def set_accel_range(self, accel_range=0):
         """Set the range of the accelerometer.  Accel_range should be a value of:
-          - 0 = +/-2G
+          - 0 = +/-2G (default)
           - 1 = +/-4G
           - 2 = +/-8G
           - 3 = +/-16G
         """
         assert accel_range in [0, 1, 2, 3], 'Accel range must be one of 0, 1, 2, 3!'
         self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_RANGE, accel_range & 0x7F])
+
+    def set_tap_config(self, tap_type=0, threshold=80):
+        """Set the tap detection configuration.  Tap_type should be a value of:
+          - 0 = no tap detection
+          - 1 = single tap detection
+          - 2 = single & double tap detection (default)
+        Threshold controls the sensitivity of the detection and is a value FROM
+        0 to 255, the higher the value the less sensitive the detection.  This
+        value depends on the accelerometer range and good values are:
+          - Accel range +/-16G = 5-10
+          - Accel range +/-8G  = 10-20
+          - Accel range +/-4G  = 20-40
+          - Accel range +/-2G  = 40-80 (80 is the default)
+        """
+        assert tap_type in [0, 1, 2], 'Type must be one of 0, 1, 2!'
+        assert threshold >= 0 and threshold <= 255, 'Threshold must be a value 0-255!'
+        # Assemble data to send by turning each unsigned 8 bit values into two
+        # 7-bit values that firmata can understand.  The most significant bits
+        # are first and the least significant (7th) bit follows.
+        tap_type_low  = tap_type & 0x7F
+        tap_type_high = (tap_type & 0xFF) >> 7
+        threshold_low  = threshold & 0x7F
+        threshold_high = (threshold & 0xFF) >> 7
+        # Send command.
+        self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_TAP_CONFIG,
+            tap_type_low, tap_type_high, threshold_low, threshold_high])
