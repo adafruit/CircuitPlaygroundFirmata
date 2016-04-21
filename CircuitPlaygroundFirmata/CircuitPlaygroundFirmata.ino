@@ -682,8 +682,8 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
       // First check we have enough parameters.
       if (argc >= 4) {
         // Parse out paramemters.
-        uint8_t type = ((argv[1] & 0x01) << 7) || (argv[0] & 0x7F);
-        uint8_t threshold = ((argv[3] & 0x01) << 7) || (argv[2] & 0x7F);
+        uint8_t type = ((argv[1] & 0x01) << 7) | (argv[0] & 0x7F);
+        uint8_t threshold = ((argv[3] & 0x01) << 7) | (argv[2] & 0x7F);
         // Set the click threshold values.
         accel.setClick(type, threshold);
       }
