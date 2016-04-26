@@ -26,8 +26,6 @@ print('Printing accelerometer data (Ctrl-C to quit)...')
 while True:
     board.read_accel(accel_data)
     time.sleep(2.0)
-    #board.read_tap(tap_data)
-    #time.sleep(2.0)
 
 # Close Firmata board connection when done.
 board.close()
