@@ -26,7 +26,7 @@ def tap_data(single, double):
         print('Double click!')
 
 # Grab a tap detection reading every 2 seconds.
-print('Printing accelerometer data (Ctrl-C to quit)...')
+print('Printing tap detection every 2 seconds (Ctrl-C to quit)...')
 while True:
     board.read_tap(tap_data)
     time.sleep(2.0)
