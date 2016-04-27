@@ -5,10 +5,6 @@ Arduino sketch located in the "CircuitPlaygroundFirmata" directory.  To load the
 firmware you'll need the following libraries installed (use the library manager to
 search and install them):
 
--   CapacitiveSensor
--   Adafruit NeoPixel
--   Adafruit GFX
--   Adafruit LIS3DH
--   Adafruit Unified Sensor
+-   Adafruit_CircuitPlayground
 
 Examples of using the firmware with Python and PyMata are in the "Python Examples" directory.
