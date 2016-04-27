@@ -33,10 +33,7 @@
 #include <Servo.h>
 #include <Wire.h>
 #include <Firmata.h>
-#include <Adafruit_NeoPixel.h>
-#include <Adafruit_LIS3DH.h>
-#include <Adafruit_Sensor.h>
-#include <CapacitiveSensor.h>
+#include <Adafruit_CircuitPlayground.h>
 
 // Uncomment below to enable debug output.
 //#define DEBUG_MODE
@@ -82,6 +79,9 @@
                                       //    24 bits will be mapped to the R, G, B bytes.
 #define CP_PIXEL_SHOW           0x11  // Update NeoPixels with their current color values.
 #define CP_PIXEL_CLEAR          0x12  // Clear all NeoPixels to black/off.  Must call show pixels after this to see the change!
+#define CP_PIXEL_BRIGHTNESS     0x13  // Set the brightness of the NeoPixels, just like calling the
+                                      // NeoPixel library setBrightness function.  Takes one parameter
+                                      // which is a single byte with a value 0-100.
 #define CP_TONE                 0x20  // Play a tone on the speaker, expects the following bytes as data:
                                       //  - Frequency (hz) as 2 7-bit bytes (up to 2^14 hz, or about 16khz)
                                       //  - Duration (ms) as 2 7-bit bytes.
@@ -120,55 +120,44 @@
  *============================================================================*/
 
 // Circuit playground globals:
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE);
-Adafruit_LIS3DH accel = Adafruit_LIS3DH(LIS3DH_CS);
 bool streamTap = false;
 bool streamAccel = false;
 // Define type for the cap touch sensor state of each cap touch input.
 typedef struct {
-  CapacitiveSensor sensor;
   bool streaming;
   uint8_t pin;
 } cap_state_type;
 
 cap_state_type cap_state[CAP_COUNT] = {
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 0),
     .streaming = false,
     .pin       = 0
   },
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 1),
     .streaming = false,
     .pin       = 1
   },
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 2),
     .streaming = false,
     .pin       = 2
   },
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 3),
     .streaming = false,
     .pin       = 3
   },
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 6),
     .streaming = false,
     .pin       = 6
   },
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 9),
     .streaming = false,
     .pin       = 9
   },
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 10),
     .streaming = false,
     .pin       = 10
   },
   {
-    .sensor    = CapacitiveSensor(CAP_COMMON, 12),
     .streaming = false,
     .pin       = 12
   }
@@ -575,17 +564,27 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         uint8_t r = (argv[1] << 1) | ((argv[2] & 0x7F) >> 6);  // Red = 7 bits from byte 4 and 1 bit from byte 5
         uint8_t g = ((argv[2] & 0x3F) << 2) | (((argv[3]) & 0x7F) >> 5);  // Green = 6 bits from byte 5 and 2 bits from byte 6
         uint8_t b = ((argv[3] & 0x1F) << 3) | (((argv[4]) & 0x7F) >> 4);  // Blue = 5 bits from byte 6 and 3 bits from byte 7
-        pixels.setPixelColor(pixel, r, g, b);
+        CircuitPlayground.strip.setPixelColor(pixel, r, g, b);
       }
       break;
     case CP_PIXEL_SHOW:
       // Light up the neopixels with their current buffer values.
-      pixels.show();
+      CircuitPlayground.strip.show();
       break;
     case CP_PIXEL_CLEAR:
       // Clear all the pixel color values.
-      pixels.clear();
+      CircuitPlayground.strip.clear();
       break;
+    case CP_PIXEL_BRIGHTNESS:
+      // Set pixel brightness.
+      // Expects 1 byte with the brightness as a value 0-100.
+      if (argc >= 1) {
+        uint8_t brightness = argv[0];
+        if (brightness > 100) {
+          return;
+        }
+        CircuitPlayground.strip.setBrightness(brightness);
+      }
     case CP_TONE:
       // Play a tone on the speaker.
       // Expect: 2 bytes tone frequency, 2 bytes tone duration
@@ -631,7 +630,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         // Now find the specified cap input and send a response with its current cap touch value.
         for (int i=0; i<CAP_COUNT; ++i) {
           if (cap_state[i].pin == input) {
-            sendCapResponse(cap_state[i]);
+            sendCapResponse(input);
           }
         }
       }
@@ -673,7 +672,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
           return;
         }
         // Set the range of the accelerometer.
-        accel.setRange((lis3dh_range_t)range);
+        CircuitPlayground.lis.setRange((lis3dh_range_t)range);
       }
       break;
     case CP_ACCEL_TAP_CONFIG:
@@ -685,7 +684,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         uint8_t type = ((argv[1] & 0x01) << 7) | (argv[0] & 0x7F);
         uint8_t threshold = ((argv[3] & 0x01) << 7) | (argv[2] & 0x7F);
         // Set the click threshold values.
-        accel.setClick(type, threshold);
+        CircuitPlayground.lis.setClick(type, threshold);
       }
   }
 }
@@ -694,7 +693,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
 void sendAccelResponse() {  
   // Get an accelerometer X, Y, Z reading.
   sensors_event_t event;
-  accel.getEvent(&event);
+  CircuitPlayground.lis.getEvent(&event);
   // Construct a response data packet.
   uint8_t data[13] = {0};
   data[0] = CP_ACCEL_READ_REPLY;
@@ -720,7 +719,7 @@ void sendAccelResponse() {
 // Read the accelerometer tap detection and send a response packet.
 void sendTapResponse() {
   // Get the accelerometer tap detection state.
-  uint8_t click = accel.getClick();
+  uint8_t click = CircuitPlayground.lis.getClick();
   // Construct a response data packet and send it.
   uint8_t data[2] = {0};
   data[0] = CP_ACCEL_TAP_REPLY;
@@ -730,11 +729,11 @@ void sendTapResponse() {
 }
 
 // Read the capacitive sensor state and send a response packet.
-void sendCapResponse(cap_state_type& cap_input) {
-  // Get the cap sense value for the provided input.
-  int32_t value = cap_input.sensor.capacitiveSensor(CAP_SAMPLES);
+void sendCapResponse(uint8_t pin) {
+  // Get the cap sense value for the provided input pin.
+  int32_t value = CircuitPlayground.readCap(pin, CAP_SAMPLES);
   // Build a response data packet and send it.  The response includes:
-  // - uint8_t: CP_CAP_REPLY value (0x
+  // - uint8_t: CP_CAP_REPLY value
   // - uint8_t: pin number of the read input
   // - int32_t: cap sensor value, large values mean the input was touched
   union {
@@ -746,7 +745,7 @@ void sendCapResponse(cap_state_type& cap_input) {
     uint8_t bytes[6];
   } response;
   response.data.type = CP_CAP_REPLY;
-  response.data.pin = cap_input.pin;
+  response.data.pin = pin;
   response.data.value = value;
   // Send the response, this will expand each byte into 2 bytes of 7-bit data.
   Firmata.sendSysex(CP_COMMAND, 6, response.bytes);
@@ -1045,13 +1044,13 @@ void circuitPlaygroundReset() {
   // or accelerometer data streaming back.
 
   // Turn off all the NeoPixels.
-  pixels.clear();
-  pixels.show();
+  CircuitPlayground.strip.clear();
+  CircuitPlayground.strip.show();
 
   // Reset the accelerometer to a default range.
-  accel.setRange(LIS3DH_RANGE_2_G);
+  CircuitPlayground.lis.setRange(LIS3DH_RANGE_2_G);
   delay(100);
-  accel.setClick(2, 80);
+  CircuitPlayground.lis.setClick(2, 80);
   delay(100);
 
   // Turn off streaming of tap, accel, and cap touch data.
@@ -1074,10 +1073,9 @@ void setup()
   #endif
   
   // Circuit playground setup:
-  pixels.begin();
-  if (!accel.begin()) {
-    // Failed to initialize accelerometer, fast blink the red LED on the board.
-    DEBUG_PRINTLN("Failed to initialize accelerometer!");
+  if (!CircuitPlayground.begin()) {
+    // Failed to initialize circuit playground, fast blink the red LED on the board.
+    DEBUG_PRINTLN("Failed to initialize circuit playground!");
     pinMode(13, OUTPUT);
     while (1) {
       digitalWrite(13, LOW);
@@ -1111,7 +1109,6 @@ void setup()
   pinConfig[11] = PIN_MODE_IGNORE;   // Pin 11 = SPI
   pinConfig[10] = PIN_MODE_IGNORE;   // Pin 10 = SPI
   pinConfig[9]  = PIN_MODE_IGNORE;   // Pin 9  = SPI
-  //pinConfig[22] = PIN_MODE_IGNORE;  // Pin 22 = cap touch common input
   pinConfig[28] = PIN_MODE_IGNORE;   // Pin 28 = D8 = LIS3DH CS
   pinConfig[26] = PIN_MODE_IGNORE;   // Messes with CS too?
   
@@ -1168,7 +1165,7 @@ void loop()
     // Check if any cap touch inputs should be streamed to the firmata client.
     for (int i=0; i<CAP_COUNT; ++i) {
       if (cap_state[i].streaming) {
-        sendCapResponse(cap_state[i]);
+        sendCapResponse(cap_state[i].pin);
       }
     }
   }

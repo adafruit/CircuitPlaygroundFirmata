@@ -24,6 +24,14 @@ colors = [ (255,   0,   0),  # Red color (components are red, green, blue)
            ( 75,   0, 130),  # Indigo
            (143,   0, 255) ] # Violet
 
+# Adjust the brightness of all the pixels by calling set_pixel_brightness.
+# Send a value from 0 - 100 which means dark to full bright.
+# Note that if you go down to 0 brightness you won't be able to go back up
+# to higher brightness because the color information is 'lost'.  It's best to
+# just call set brightness once at the start to set a good max brightness instead
+# of trying to make animations with it.
+board.set_pixel_brightness(50)
+
 # Animate moving the colors across the pixels 100 times / 10 seconds.
 print('Animating pixels for 10 seconds...')
 for offset in range(100):

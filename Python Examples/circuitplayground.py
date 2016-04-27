@@ -43,6 +43,9 @@ CP_PIXEL_SET            = 0x10  # Set NeoPixel, expects the following bytes as d
                                 #    24 bits will be mapped to the R, G, B bytes.
 CP_PIXEL_SHOW           = 0x11  # Update NeoPixels with their current color values.
 CP_PIXEL_CLEAR          = 0x12  # Clear all NeoPixels to black/off.  Must call show pixels after this to see the change!
+CP_PIXEL_BRIGHTNESS     = 0x13  # Set the brightness of the NeoPixels, just like calling the
+                                # NeoPixel library setBrightness function.  Takes one parameter
+                                # which is a single byte with a value 0-100.
 CP_TONE                 = 0x20  # Play a tone on the speaker, expects the following bytes as data:
                                 #  - Frequency (hz) as 2 7-bit bytes (up to 2^14 hz, or about 16khz)
                                 #  - Duration (ms) as 2 7-bit bytes.
@@ -253,6 +256,18 @@ class CircuitPlayground(PyMata):
         Circuit Playground board.
         """
         self._command_handler.send_sysex(CP_COMMAND, [CP_PIXEL_SHOW])
+
+    def set_pixel_brightness(self, brightness):
+        """Set the brightness of all the NeoPixels.  Brightness will be a value
+        from 0-100 where 0 means completely dark/no brightness and 100 is full
+        brightness.  Note that animating the brightness won't work the way you
+        might expect!  If you go down to 0 brightness you will 'lose' information
+        and not be able to go back up to higher brightness levels.  Instead
+        this is meant to be called once at the start to limit the brightness
+        of pixels that are later set.
+        """
+        assert brightness >= 0 and brightness <= 100, 'Brightness must be a value of 0-100!'
+        self._command_handler.send_sysex(CP_COMMAND, [CP_PIXEL_BRIGHTNESS, brightness & 0x7F])
 
     def tone(self, frequency_hz, duration_ms=0):
         """Play a tone with the specified frequency (in hz) for the specified
