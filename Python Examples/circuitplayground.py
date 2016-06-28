@@ -74,6 +74,15 @@ CP_CAP_ON               = 0x41  # Turn on continuous cap touch reads for the spe
 CP_CAP_OFF              = 0x42  # Turn off continuous cap touch reads for the specified input (sent as a byte parameter).
 CP_CAP_REPLY            = 0x43  # Capacitive input read response.  Includes a byte with the pin # of the cap input, then
                                 # four bytes of data which represent an int32_t value read from the cap input.
+CP_SENSECOLOR           = 0x50  # Perform a color sense using the NeoPixel and light sensor.
+CP_SENSECOLOR_REPLY     = 0x51  # Result of a color sense, will return the red, green, blue color
+                                # values that were read from the light sensor.  This will return
+                                # 6 bytes of data:
+                                #  - red color (unsigned 8 bit value, split across 2 7-bit bytes)
+                                #  - green color (unsigned 8 bit value, split across 2 7-bit bytes)
+                                #  - blue color (unsigned 8 bit value, split across 2 7-bit bytes)
+
+
 
 # Accelerometer constants to be passed to set_accel_range.
 ACCEL_2G  = 0
@@ -108,6 +117,7 @@ class CircuitPlayground(PyMata):
         self._tap_callback = None
         self._temp_callback = None
         self._cap_callback = None
+        self._sensecolor_callback = None
 
     def _therm_value_to_temp(self, adc_value):
         """Convert a thermistor ADC value to a temperature in Celsius."""
@@ -224,6 +234,17 @@ class CircuitPlayground(PyMata):
             value = self._parse_firmata_long(data[4:12])
             if self._cap_callback is not None:
                 self._cap_callback(input_pin, value > CAP_THRESHOLD, value)
+        elif command == CP_SENSECOLOR_REPLY:
+            # Parse sense color response.
+            if len(data) < 8:
+                logger.warning('Received color sense response with not enough data!')
+                return
+            # Parse out the red, green, blue color bytes.
+            red = self._parse_firmata_byte(data[2:4])
+            green = self._parse_firmata_byte(data[4:6])
+            blue = self._parse_firmata_byte(data[6:8])
+            if self._sensecolor_callback is not None:
+                self._sensecolor_callback(red, green, blue)
         else:
             logger.warning('Received unexpected response!')
 
@@ -434,3 +455,14 @@ class CircuitPlayground(PyMata):
         # Send command.
         self._command_handler.send_sysex(CP_COMMAND, [CP_ACCEL_TAP_CONFIG,
             tap_type_low, tap_type_high, threshold_low, threshold_high])
+
+    def sense_color(self, callback=None):
+        """Perform a color sense using NeoPixel #1 and the light sensor. Callback
+        should be a function that will be called when a color response is received
+        from the board.  This function should take three parameters, the red,
+        green, blue byte values that define the color (values that range from
+        0 to 255, i.e. minimum to maximum intensity).
+        """
+        # Save the passed in callback and then invoke the sense color command.
+        self._sensecolor_callback = callback
+        self._command_handler.send_sysex(CP_COMMAND, [CP_SENSECOLOR])
