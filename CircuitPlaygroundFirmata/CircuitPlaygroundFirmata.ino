@@ -1207,32 +1207,27 @@ void loop()
 // we light one pixel at a time, this is our counter
 uint8_t pixeln = 0;
 void runDemo(void) {
-  // test Red #13 LED
-  CircuitPlayground.redLED(pixeln % 1);
-
   /************* TEST SLIDE SWITCH */
   if (CircuitPlayground.slideSwitch()) {
     pixeln++;
-    if (pixeln == 11) {
-      pixeln = 0;
-      CircuitPlayground.clearPixels();
+    if (pixeln > 255) {
+      pixeln -= 255;
     }
   } else {
-    if (pixeln == 0) {
-      pixeln = 10;
-      CircuitPlayground.clearPixels();
-    }
     pixeln--;
+    if (pixeln < 0) {
+      pixeln += 255;
+    }
   }
 
-
   /************* TEST 10 NEOPIXELS */
-  CircuitPlayground.setPixelColor(pixeln, CircuitPlayground.colorWheel(25 * pixeln));
-
+  for (int i = 0; i < 10; i++) {
+    CircuitPlayground.setPixelColor(i, CircuitPlayground.colorWheel(25 * i + pixeln * 3));
+  }
 
   /************* TEST BOTH BUTTONS */
   if (CircuitPlayground.leftButton()) {
-    CircuitPlayground.playTone(500 + pixeln * 500, 100, false);
+    CircuitPlayground.playTone(440, 100, false);
   }
   if (CircuitPlayground.rightButton()) {
     CircuitPlayground.setBrightness(60);
@@ -1240,7 +1235,5 @@ void runDemo(void) {
     CircuitPlayground.setBrightness(20);
   }
 
-  delay(100);
-
+  delay(5);
 }
- 
