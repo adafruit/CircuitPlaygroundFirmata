@@ -109,6 +109,12 @@
 // Uncomment below to add a demo mode before USB connect
 #define DEMO_MODE
 
+// Single tap for bootloader (makecode friendly)
+#define DBL_TAP_PTR ((volatile uint32_t *)(HMCRAMC0_ADDR + HMCRAMC0_SIZE - 4))
+#define DBL_TAP_MAGIC 0xf01669ef // Randomly selected, adjusted to have first and last bit set
+#define DBL_TAP_MAGIC_QUICK_BOOT 0xf02669ef
+
+
 // These defines setup debug output if enabled above (otherwise it
 // turns into no-ops that compile out).
 #define DEBUG_OUTPUT Serial1
@@ -1402,6 +1408,9 @@ void circuitPlaygroundReset() {
 
 void setup()
 {
+
+  *DBL_TAP_PTR = DBL_TAP_MAGIC;
+    
   // Circuit playground setup:
   if (!CircuitPlayground.begin()) {
     // Failed to initialize circuit playground, fast blink the red LED on the board.
@@ -1514,6 +1523,21 @@ void runDemo(void) {
   // test Red #13 LED
   CircuitPlayground.redLED(pixeln % 1);
 
+  /************* TEST 10 NEOPIXELS */
+  CircuitPlayground.setPixelColor(pixeln, CircuitPlayground.colorWheel(25 * pixeln));
+
+  /************* TEST BOTH BUTTONS */
+  if (CircuitPlayground.leftButton()) {
+    CircuitPlayground.playTone(500 + pixeln * 500, 100, false);
+  }
+  if (CircuitPlayground.rightButton()) {
+    CircuitPlayground.setBrightness(60);
+  } else {
+    CircuitPlayground.setBrightness(20);
+  }
+
+  delay(100);
+
   /************* TEST SLIDE SWITCH */
   if (CircuitPlayground.slideSwitch()) {
     pixeln++;
@@ -1528,22 +1552,4 @@ void runDemo(void) {
     }
     pixeln--;
   }
-
-
-  /************* TEST 10 NEOPIXELS */
-  CircuitPlayground.setPixelColor(pixeln, CircuitPlayground.colorWheel(25 * pixeln));
-
-
-  /************* TEST BOTH BUTTONS */
-  if (CircuitPlayground.leftButton()) {
-    CircuitPlayground.playTone(500 + pixeln * 500, 100, false);
-  }
-  if (CircuitPlayground.rightButton()) {
-    CircuitPlayground.setBrightness(60);
-  } else {
-    CircuitPlayground.setBrightness(20);
-  }
-
-  delay(100);
-
 }
