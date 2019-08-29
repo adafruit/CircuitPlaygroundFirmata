@@ -102,6 +102,10 @@
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_CircuitPlayground.h>
+#include <WebUSB.h>
+
+WebUSB WebUSBSerial(1, "https://studio.code.org/maker/setup");
+#define SerialW WebUSBSerial
 
 // Uncomment below to enable debug output.
 //#define DEBUG_MODE
@@ -1433,18 +1437,22 @@ void setup()
   Firmata.attach(START_SYSEX, sysexCallback);
   Firmata.attach(SYSTEM_RESET, systemResetCallback);
 
-  // to use a port other than Serial, such as Serial1 on an Arduino Leonardo or Mega,
-  // Call begin(baud) on the alternate serial port and pass it to Firmata to begin like this:
-  // Serial1.begin(57600);
-  // Firmata.begin(Serial1);
-  // then comment out or remove lines 701 - 704 below
-  Firmata.begin(57600);
+  SerialW.begin(57600);
+  Serial.begin(57600);
 
-#if defined(DEMO_MODE)
-  while (!Serial) {
-     runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
+  // Listen for either serial port type to connect.
+  while (!SerialW && !Serial) {
+    #if defined(DEMO_MODE)
+    runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
+    #endif
   }
-#endif
+
+  if (SerialW) {
+    Firmata.begin(SerialW);
+  }
+  if (Serial) {
+    Firmata.begin(Serial);
+  }
 
   systemResetCallback();  // reset to default config
 }
