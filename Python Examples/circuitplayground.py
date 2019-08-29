@@ -37,6 +37,8 @@ from PyMata.pymata import PyMata
 
 # Constants that define the Circuit Playground Firmata command values.
 CP_COMMAND              = 0x40  # Byte that identifies all Circuit Playground commands.
+
+
 CP_PIXEL_SET            = 0x10  # Set NeoPixel, expects the following bytes as data:
                                 #  - Pixel ID (0-9)
                                 #  - Pixel RGB color data as 4 7-bit bytes.  The upper
@@ -81,7 +83,8 @@ CP_SENSECOLOR_REPLY     = 0x51  # Result of a color sense, will return the red, 
                                 #  - red color (unsigned 8 bit value, split across 2 7-bit bytes)
                                 #  - green color (unsigned 8 bit value, split across 2 7-bit bytes)
                                 #  - blue color (unsigned 8 bit value, split across 2 7-bit bytes)
-
+CP_IMPL_VERS            = 0x60  # Get the implementation version, 3 bytes of Major, Minor, Bugfix
+CP_IMPL_VERS_REPLY      = 0x61
 
 
 # Accelerometer constants to be passed to set_accel_range.
@@ -118,7 +121,8 @@ class CircuitPlayground(PyMata):
         self._temp_callback = None
         self._cap_callback = None
         self._sensecolor_callback = None
-
+        self._implemenation_version_callback = None
+        
     def _therm_value_to_temp(self, adc_value):
         """Convert a thermistor ADC value to a temperature in Celsius."""
         # Use Steinhart-Hart thermistor equation to convert thermistor resistance to
@@ -245,8 +249,27 @@ class CircuitPlayground(PyMata):
             blue = self._parse_firmata_byte(data[6:8])
             if self._sensecolor_callback is not None:
                 self._sensecolor_callback(red, green, blue)
+        elif command == CP_IMPL_VERS_REPLY:
+            # Parse implemenation version response.
+            if len(data) < 8:
+                logger.warning('Received color sense response with not enough data!')
+                return
+            # Parse out the maj, min, and fix
+            major = self._parse_firmata_byte(data[2:4])
+            minor = self._parse_firmata_byte(data[4:6])
+            bugfix = self._parse_firmata_byte(data[6:8])
+            if self._implemenation_version_callback is not None:
+                self._implemenation_version_callback(major, minor, bugfix)
         else:
             logger.warning('Received unexpected response!')
+
+    def read_implementation_version(self, callback):
+        """Request the implementation version.  The result will be returned by
+        calling the provided callback function and passing it the 3 bytes of data.
+        """
+        self._implemenation_version_callback = callback
+        self._command_handler.send_sysex(CP_COMMAND, [CP_IMPL_VERS])
+
 
     def set_pixel(self, pixel, red, green, blue):
         """Set the specified pixel (0-9) of the Circuit Playground board to the

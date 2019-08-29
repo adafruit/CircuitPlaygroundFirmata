@@ -98,6 +98,8 @@
   See file LICENSE.txt for further informations on licensing terms.
 */
 
+uint8_t IMPLEMENTATION_VERSION[3] = { 8, 29, 19 }; // semver: maj, min, fix
+
 #include <SPI.h>
 #include <Servo.h>
 #include <Wire.h>
@@ -221,6 +223,8 @@
                                       //  - red color (unsigned 8 bit value, split across 2 7-bit bytes)
                                       //  - green color (unsigned 8 bit value, split across 2 7-bit bytes)
                                       //  - blue color (unsigned 8 bit value, split across 2 7-bit bytes)
+#define CP_IMPL_VERS            0x60  // Get the implementation version
+#define CP_IMPL_VERS_REPLY      0x61  // 3 bytes from IMPLEMENTATION_VERSION
 
 
 // the minimum interval for sampling analog input
@@ -897,6 +901,9 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
       tone(CPLAY_SPEAKER, 100, 1);  // Very short tone to stop playback as noTone locks the board.
       //noTone(CPLAY_SPEAKER);  TODO: Notone broken! Locks up
       break;
+    case CP_IMPL_VERS:
+      sendImplemenationVersionResponse();
+      break;
     case CP_ACCEL_READ:
       sendAccelResponse();
       break;
@@ -979,10 +986,12 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         // Set the click threshold values.
         CircuitPlayground.lis.setClick(type, threshold);
       }
+      break;
     case CP_SENSECOLOR:
       // Sense the color of an object over the light sensor and send back
       // a CP_SENSECOLOR_REPLY response.
       sendColorSenseResponse();
+      break;
   }
 }
 
@@ -997,6 +1006,19 @@ void sendColorSenseResponse() {
   data[1] = red;
   data[2] = green;
   data[3] = blue;
+  // Send the response.
+  Firmata.sendSysex(CP_COMMAND, 4, data);
+}
+
+
+// Read the version and send a response packet
+void sendImplemenationVersionResponse() {
+  // Construct a response data packet and send it.
+  uint8_t data[4] = {0};
+  data[0] = CP_IMPL_VERS_REPLY;
+  data[1] = IMPLEMENTATION_VERSION[0];
+  data[2] = IMPLEMENTATION_VERSION[1];
+  data[3] = IMPLEMENTATION_VERSION[2];
   // Send the response.
   Firmata.sendSysex(CP_COMMAND, 4, data);
 }
