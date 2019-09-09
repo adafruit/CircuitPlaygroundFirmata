@@ -104,22 +104,17 @@ uint8_t IMPLEMENTATION_VERSION[3] = { 8, 29, 19 }; // semver: maj, min, fix
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_CircuitPlayground.h>
-#ifdef USE_TINYUSB
-  #include "Adafruit_TinyUSB.h"
-  Adafruit_USBD_WebUSB WebUSBSerial;
-  WEBUSB_URL_DEF(landingPage, 1 /*https*/, "studio.code.org/maker/setup");
-  volatile bool WebUSBConnected = false;
-  void line_state_callback(bool connected) {
-    WebUSBConnected = connected;
-    //if ( connected ) WebUSBSerial.println("TinyUSB WebUSB Serial example");
-  }
+#include <Adafruit_TinyUSB.h>
 
-#else
-  #include <WebUSB.h>
-  WebUSB WebUSBSerial(1, "https://studio.code.org/maker/setup");
-#endif
+Adafruit_USBD_WebUSB WebUSBSerial;
+WEBUSB_URL_DEF(landingPage, 1 /*https*/, "studio.code.org/maker/setup");
+volatile bool WebUSBConnected = false;
+void line_state_callback(bool connected) {
+  WebUSBConnected = connected;
+  //if ( connected ) WebUSBSerial.println("TinyUSB WebUSB Serial example");
+}
+
 #define SerialW WebUSBSerial
-
 
 // Uncomment below to enable debug output.
 //#define DEBUG_MODE
@@ -1480,21 +1475,13 @@ void setup()
   Firmata.attach(START_SYSEX, sysexCallback);
   Firmata.attach(SYSTEM_RESET, systemResetCallback);
 
-#ifdef USE_TINYUSB
   SerialW.begin();
   SerialW.setLandingPage(&landingPage);
   SerialW.setLineStateCallback(line_state_callback);
-#else
-  SerialW.begin(57600);
-#endif
   Serial.begin(57600);
 
   // Listen for either serial port type to connect.
-#ifdef USE_TINYUSB
   while (!WebUSBConnected && !Serial) {
-#else
-  while (!SerialW && !Serial) {
-#endif
     #if defined(DEMO_MODE)
     runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
     #endif
