@@ -33,6 +33,10 @@
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_CircuitPlayground.h>
+#include <WebUSB.h>
+
+WebUSB WebUSBSerial(1, "studio.code.org/maker/setup");
+#define SerialW WebUSBSerial
 
 // Uncomment below to enable debug output.
 //#define DEBUG_MODE
@@ -1130,7 +1134,8 @@ void setup()
   // Serial1.begin(57600);
   // Firmata.begin(Serial1);
   // then comment out or remove lines 701 - 704 below
-  Firmata.begin(57600);
+  SerialW.begin(57600);
+  Firmata.begin(SerialW);
 
   // Tell Firmata to ignore pins that are used by the Circuit Playground hardware.
   // This MUST be called or else Firmata will 'clobber' pins like the SPI CS!
@@ -1138,7 +1143,7 @@ void setup()
   pinConfig[26] = PIN_MODE_IGNORE;   // Messes with CS too?
 
 #if defined(DEMO_MODE)
-  while (!Serial) {
+  while (!SerialW) {
      runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
   }
 #endif
@@ -1151,6 +1156,8 @@ void setup()
  *============================================================================*/
 void loop()
 {
+  SerialW.flush();
+
   byte pin, analogPin;
 
   /* DIGITALREAD - as fast as possible, check for changes and output them to the
@@ -1243,4 +1250,3 @@ void runDemo(void) {
   delay(100);
 
 }
- 
