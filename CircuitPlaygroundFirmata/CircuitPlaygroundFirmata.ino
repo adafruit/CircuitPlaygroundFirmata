@@ -618,7 +618,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
       noTone(SPEAKER_PIN);
       break;
     case CP_IMPL_VERS:
-      sendImplemenationVersionResponse();
+      sendImplementationVersionResponse();
       break;
     case CP_ACCEL_READ:
       sendAccelResponse();
@@ -725,7 +725,7 @@ void sendColorSenseResponse() {
 }
 
 // Read the version and send a response packet
-void sendImplemenationVersionResponse() {
+void sendImplementationVersionResponse() {
   // Construct a response data packet and send it.
   uint8_t data[4] = {0};
   data[0] = CP_IMPL_VERS_REPLY;
