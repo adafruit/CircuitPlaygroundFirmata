@@ -29,7 +29,7 @@
   See file LICENSE.txt for further informations on licensing terms.
 */
 
-uint8_t IMPLEMENTATION_VERSION[3] = { 8, 29, 19 }; // semver: maj, min, fix
+uint8_t IMPLEMENTATION_VERSION[3] = { 10, 30, 19 }; // semver: maj, min, fix
 
 #include <SPI.h>
 #include <Servo.h>
