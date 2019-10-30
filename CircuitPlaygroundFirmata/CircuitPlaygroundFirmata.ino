@@ -33,6 +33,10 @@
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_CircuitPlayground.h>
+#include <WebUSB.h>
+
+WebUSB WebUSBSerial(1, "studio.code.org/maker/setup");
+#define SerialW WebUSBSerial
 
 // Uncomment below to enable debug output.
 //#define DEBUG_MODE
@@ -1130,18 +1134,28 @@ void setup()
   // Serial1.begin(57600);
   // Firmata.begin(Serial1);
   // then comment out or remove lines 701 - 704 below
-  Firmata.begin(57600);
+  SerialW.begin(57600);
+  Serial.begin(57600);
+
+  // Listen for either serial port type to connect.
+  while (!SerialW && !Serial) {
+    #if defined(DEMO_MODE)
+      runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
+    #endif
+  }
+
+  if (SerialW) {
+    Firmata.begin(SerialW);
+  }
+  if (Serial) {
+    Firmata.begin(Serial);
+  }
 
   // Tell Firmata to ignore pins that are used by the Circuit Playground hardware.
   // This MUST be called or else Firmata will 'clobber' pins like the SPI CS!
   pinConfig[28] = PIN_MODE_IGNORE;   // Pin 28 = D8 = LIS3DH CS
   pinConfig[26] = PIN_MODE_IGNORE;   // Messes with CS too?
 
-#if defined(DEMO_MODE)
-  while (!Serial) {
-     runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
-  }
-#endif
 
   systemResetCallback();  // reset to default config
 }
@@ -1151,6 +1165,8 @@ void setup()
  *============================================================================*/
 void loop()
 {
+  SerialW.flush();
+
   byte pin, analogPin;
 
   /* DIGITALREAD - as fast as possible, check for changes and output them to the
@@ -1243,4 +1259,3 @@ void runDemo(void) {
   delay(100);
 
 }
- 
