@@ -29,10 +29,16 @@
   See file LICENSE.txt for further informations on licensing terms.
 */
 
+uint8_t IMPLEMENTATION_VERSION[3] = { 10, 30, 19 }; // semver: maj, min, fix
+
 #include <SPI.h>
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_CircuitPlayground.h>
+#include <WebUSB.h>
+
+WebUSB WebUSBSerial(1, "studio.code.org/maker/setup");
+#define SerialW WebUSBSerial
 
 // Uncomment below to enable debug output.
 //#define DEBUG_MODE
@@ -119,7 +125,8 @@
                                       //  - red color (unsigned 8 bit value, split across 2 7-bit bytes)
                                       //  - green color (unsigned 8 bit value, split across 2 7-bit bytes)
                                       //  - blue color (unsigned 8 bit value, split across 2 7-bit bytes)
-
+#define CP_IMPL_VERS            0x60  // Get the implementation version
+#define CP_IMPL_VERS_REPLY      0x61  // 3 bytes from IMPLEMENTATION_VERSION
 
 // the minimum interval for sampling analog input
 #define MINIMUM_SAMPLING_INTERVAL   1
@@ -614,6 +621,9 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
       // Stop tone playback.
       noTone(SPEAKER_PIN);
       break;
+    case CP_IMPL_VERS:
+      sendImplementationVersionResponse();
+      break;
     case CP_ACCEL_READ:
       sendAccelResponse();
       break;
@@ -714,6 +724,18 @@ void sendColorSenseResponse() {
   data[1] = red;
   data[2] = green;
   data[3] = blue;
+  // Send the response.
+  Firmata.sendSysex(CP_COMMAND, 4, data);
+}
+
+// Read the version and send a response packet
+void sendImplementationVersionResponse() {
+  // Construct a response data packet and send it.
+  uint8_t data[4] = {0};
+  data[0] = CP_IMPL_VERS_REPLY;
+  data[1] = IMPLEMENTATION_VERSION[0];
+  data[2] = IMPLEMENTATION_VERSION[1];
+  data[3] = IMPLEMENTATION_VERSION[2];
   // Send the response.
   Firmata.sendSysex(CP_COMMAND, 4, data);
 }
@@ -1130,18 +1152,28 @@ void setup()
   // Serial1.begin(57600);
   // Firmata.begin(Serial1);
   // then comment out or remove lines 701 - 704 below
-  Firmata.begin(57600);
+  SerialW.begin(57600);
+  Serial.begin(57600);
+
+  // Listen for either serial port type to connect.
+  while (!SerialW && !Serial) {
+    #if defined(DEMO_MODE)
+      runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
+    #endif
+  }
+
+  if (SerialW) {
+    Firmata.begin(SerialW);
+  }
+  if (Serial) {
+    Firmata.begin(Serial);
+  }
 
   // Tell Firmata to ignore pins that are used by the Circuit Playground hardware.
   // This MUST be called or else Firmata will 'clobber' pins like the SPI CS!
   pinConfig[28] = PIN_MODE_IGNORE;   // Pin 28 = D8 = LIS3DH CS
   pinConfig[26] = PIN_MODE_IGNORE;   // Messes with CS too?
 
-#if defined(DEMO_MODE)
-  while (!Serial) {
-     runDemo();   // this will 'demo' the board off, so you know its working, until the serial port is opened
-  }
-#endif
 
   systemResetCallback();  // reset to default config
 }
@@ -1151,6 +1183,8 @@ void setup()
  *============================================================================*/
 void loop()
 {
+  SerialW.flush();
+
   byte pin, analogPin;
 
   /* DIGITALREAD - as fast as possible, check for changes and output them to the
@@ -1243,4 +1277,3 @@ void runDemo(void) {
   delay(100);
 
 }
- 
