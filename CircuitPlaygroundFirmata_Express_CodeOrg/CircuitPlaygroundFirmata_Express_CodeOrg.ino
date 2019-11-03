@@ -128,10 +128,11 @@ uint8_t IMPLEMENTATION_VERSION[3] = { 8, 29, 19 }; // semver: maj, min, fix
 #define DEMO_MODE
 
 // Single tap for bootloader (makecode friendly)
+#if defined(ADAFRUIT_CIRCUITPLAYGROUND_M0)
 #define DBL_TAP_PTR ((volatile uint32_t *)(HMCRAMC0_ADDR + HMCRAMC0_SIZE - 4))
 #define DBL_TAP_MAGIC 0xf01669ef // Randomly selected, adjusted to have first and last bit set
 #define DBL_TAP_MAGIC_QUICK_BOOT 0xf02669ef
-
+#endif
 
 // These defines setup debug output if enabled above (otherwise it
 // turns into no-ops that compile out).
@@ -1446,9 +1447,10 @@ void circuitPlaygroundReset() {
 
 void setup()
 {
-
+#if defined(ADAFRUIT_CIRCUITPLAYGROUND_M0)
   *DBL_TAP_PTR = DBL_TAP_MAGIC;
-    
+#endif
+
   // Circuit playground setup:
   if (!CircuitPlayground.begin()) {
     // Failed to initialize circuit playground, fast blink the red LED on the board.

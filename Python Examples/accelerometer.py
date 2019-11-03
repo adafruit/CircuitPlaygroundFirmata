@@ -21,11 +21,11 @@ def accel_data(x, y, z):
     print('Y = {0}'.format(y))
     print('Z = {0}'.format(z))
 
-# Grab an accelerometer reading every 2 seconds.
+# Grab an accelerometer reading every 0.5 seconds.
 print('Printing accelerometer data (Ctrl-C to quit)...')
 while True:
     board.read_accel(accel_data)
-    time.sleep(2.0)
+    time.sleep(0.5)
 
 # Close Firmata board connection when done.
 board.close()
