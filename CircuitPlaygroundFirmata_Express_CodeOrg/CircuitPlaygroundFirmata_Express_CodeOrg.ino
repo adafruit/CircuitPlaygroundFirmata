@@ -1061,24 +1061,20 @@ void sendTapResponse() {
 // Read the capacitive sensor state and send a response packet.
 void sendCapResponse(uint8_t pin) {
   // Get the cap sense value for the provided input pin.
-  int32_t value = CircuitPlayground.readCap(pin, CAP_SAMPLES);
+  uint16_t capread = CircuitPlayground.readCap(pin, CAP_SAMPLES);
   // Build a response data packet and send it.  The response includes:
   // - uint8_t: CP_CAP_REPLY value
   // - uint8_t: pin number of the read input
   // - int32_t: cap sensor value, large values mean the input was touched
-  union {
-    struct {
-      uint8_t type;
-      uint8_t pin;
-      int32_t value;
-    } data;
-    uint8_t bytes[6];
-  } response;
-  response.data.type = CP_CAP_REPLY;
-  response.data.pin = pin;
-  response.data.value = value;
+  uint8_t bytes[6] = {0};
+  bytes[0] = CP_CAP_REPLY; // type of response
+  bytes[1] = pin; // which pin we're sending data for
+  bytes[2] = capread; // send 16 bits split over 4 bytes
+  bytes[3] = capread >> 8;
+  bytes[4] = 0;       // top two bytes are not used!
+  bytes[5] = 0;
   // Send the response, this will expand each byte into 2 bytes of 7-bit data.
-  Firmata.sendSysex(CP_COMMAND, 6, response.bytes);
+  Firmata.sendSysex(CP_COMMAND, 6, bytes);
 }
 
 /*==============================================================================

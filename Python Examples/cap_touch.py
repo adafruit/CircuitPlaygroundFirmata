@@ -31,7 +31,7 @@ def cap_touch_data(input_pin, touched, raw_value):
 print('Printing cap touch input 10 state (Ctrl-C to quit)...')
 while True:
     board.read_cap_touch(10, cap_touch_data)
-    time.sleep(2.0)
+    time.sleep(0.1)
 
 # Close Firmata board connection when done.
 board.close()
