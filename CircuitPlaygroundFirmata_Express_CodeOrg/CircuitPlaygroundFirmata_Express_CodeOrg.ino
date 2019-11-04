@@ -1555,7 +1555,7 @@ void loop()
  *============================================================================*/
 
 // we light one pixel at a time, this is our counter
-uint8_t pixeln = 0;
+int8_t pixeln = 0;
 void runDemo(void) {
   // test Red #13 LED
   CircuitPlayground.redLED(pixeln % 1);
@@ -1575,18 +1575,14 @@ void runDemo(void) {
 
   delay(100);
 
+  // now turn off the LED
+  CircuitPlayground.setPixelColor(pixeln, 0x0); 
+
   /************* TEST SLIDE SWITCH */
   if (CircuitPlayground.slideSwitch()) {
-    pixeln++;
-    if (pixeln == 11) {
-      pixeln = 0;
-      CircuitPlayground.clearPixels();
-    }
+    pixeln++; // counterclockwise
   } else {
-    if (pixeln == 0) {
-      pixeln = 10;
-      CircuitPlayground.clearPixels();
-    }
-    pixeln--;
+    pixeln--; // clockwise
   }
+  pixeln = (pixeln + 10) % 10;  // rotate around
 }
