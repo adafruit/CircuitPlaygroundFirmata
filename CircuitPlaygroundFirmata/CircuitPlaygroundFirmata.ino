@@ -1171,8 +1171,7 @@ void setup()
 
   // Tell Firmata to ignore pins that are used by the Circuit Playground hardware.
   // This MUST be called or else Firmata will 'clobber' pins like the SPI CS!
-  pinConfig[28] = PIN_MODE_IGNORE;   // Pin 28 = D8 = LIS3DH CS
-  pinConfig[26] = PIN_MODE_IGNORE;   // Messes with CS too?
+  pinConfig[26] = PIN_MODE_IGNORE;   // Pin 26 = A8 = D8 = LIS3DH CS (circuitplay32u4/pins_arduino.h)
 
 
   systemResetCallback();  // reset to default config
