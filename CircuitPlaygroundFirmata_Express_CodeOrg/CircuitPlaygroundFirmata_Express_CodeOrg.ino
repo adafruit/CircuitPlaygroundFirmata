@@ -867,6 +867,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         }
         CircuitPlayground.strip.setBrightness(brightness);
       }
+      break;
     case CP_TONE:
       // Play a tone on the speaker.
       // Expect: 2 bytes tone frequency, 2 bytes tone duration

@@ -602,6 +602,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         }
         CircuitPlayground.strip.setBrightness(brightness);
       }
+      break;
     case CP_TONE:
       // Play a tone on the speaker.
       // Expect: 2 bytes tone frequency, 2 bytes tone duration
@@ -706,6 +707,7 @@ void circuitPlaygroundCommand(byte command, byte argc, byte* argv) {
         // Set the click threshold values.
         CircuitPlayground.lis.setClick(type, threshold);
       }
+      break;
     case CP_SENSECOLOR:
       // Sense the color of an object over the light sensor and send back
       // a CP_SENSECOLOR_REPLY response.
